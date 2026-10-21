@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>工作台 · 节奏</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 顶部栏 -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">◆</span>
+      <h1>工作台</h1>
+      <span class="brand-sub">Rhythmus</span>
+    </div>
+    <nav class="page-switcher" aria-label="页面切换">
+      <button class="page-switch active" data-page="rhythm">Rhythmus</button>
+      <button class="page-switch" data-page="lemon">LemonPL</button>
+      <button class="page-switch" data-page="library">资料库</button>
+    </nav>
+    <div class="today-summary rhythm-only" id="todaySummary">
+      <div class="stat">
+        <span class="stat-num" id="statFocus">0m</span>
+        <span class="stat-label">今日专注</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num" id="statDone">0</span>
+        <span class="stat-label">今日完成</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num" id="statPomodoro">0</span>
+        <span class="stat-label">番茄数</span>
+      </div>
+      <div class="stat stat-date">
+        <span class="stat-num" id="statDate">--</span>
+        <span class="stat-label" id="statWeekday">今日</span>
+      </div>
+    </div>
+    <button class="rhythm-toggle rhythm-only" id="rhythmToggle" title="显示或隐藏今日节奏">今日节奏</button>
+  </header>
+
+  <section class="rhythm-panel rhythm-only" id="rhythmPanel">
+    <div class="rhythm-head">
+      <div>
+        <p class="eyebrow">DAILY RHYTHM</p>
+        <h2>今日节奏</h2>
+        <p class="rhythm-note">先进入状态，再攻克难题；工作、学习和阅读交替，阅读只作为短暂蓄力。</p>
+      </div>
+      <div class="rhythm-controls">
+        <label class="start-time-label">早间开始
+          <select id="morningStart">
+            <option value="10:00">10:00</option>
+            <option value="09:40">09:40</option>
+          </select>
+        </label>
+        <span class="rhythm-progress" id="rhythmProgress">0/8 完成</span>
+      </div>
+    </div>
+    <div class="rhythm-grid" id="rhythmGrid"></div>
+  </section>
+
+  <main class="layout rhythm-only">
+    <!-- 左栏：分类筛选 + 任务组 -->
+    <aside class="col col-lists">
+      <div class="filter-tabs" id="filterTabs">
+        <button class="filter-tab active" data-filter="all">全部</button>
+        <button class="filter-tab" data-filter="work">Arbeit</button>
+        <button class="filter-tab" data-filter="study">Lernen</button>
+        <button class="filter-tab" data-filter="other">其他</button>
+      </div>
+      <div class="lists-scroll">
+        <ul class="lists" id="lists"></ul>
+      </div>
+      <div class="archive-panel" id="archivePanel">
+        <div class="archive-head">
+          <button type="button" class="archive-panel-toggle" id="archivePanelToggle" aria-expanded="false">
+            <span class="archive-panel-caret" id="archivePanelCaret">▸</span>
+            <span class="archive-head-title">按月归档</span>
+            <span class="archive-total" id="archiveTotal">0</span>
+          </button>
+          <button type="button" class="archive-btn" id="archiveDoneBtn" title="把已完成任务移入对应月份文件夹">归档已完成</button>
+        </div>
+        <div class="archive-body" id="archiveBody" hidden>
+          <div class="archive-months" id="archiveMonths"></div>
+        </div>
+      </div>
+      <form class="add-list" id="addListForm">
+        <input type="text" id="newListTitle" placeholder="新建任务组…" autocomplete="off" maxlength="40">
+        <select id="newListCategory" aria-label="分类">
+          <option value="work">Arbeit</option>
+          <option value="study">Lernen</option>
+          <option value="other">其他</option>
+        </select>
+        <button type="submit" title="新建任务组">＋</button>
+      </form>
+    </aside>
+
+    <!-- 中栏：任务项 -->
+    <section class="col col-tasks">
+      <div class="tasks-head">
+        <h2 id="currentListTitle">选择或新建一个任务组</h2>
+        <span class="tasks-progress" id="tasksProgress"></span>
+      </div>
+      <div class="tasks-scroll">
+        <ul class="tasks" id="tasks"></ul>
+        <p class="empty-hint" id="tasksEmpty" hidden>还没有任务，在下面添加第一条吧。</p>
+      </div>
+      <form class="add-task" id="addTaskForm" hidden>
+        <input type="text" id="newTaskTitle" placeholder="添加任务…回车即可" autocomplete="off" maxlength="120">
+        <select id="newTaskPriority" aria-label="优先级">
+          <option value="none">优先级</option>
+          <option value="high">高</option>
+          <option value="mid">中</option>
+          <option value="low">低</option>
+        </select>
+        <input type="number" id="newTaskEstimate" placeholder="预估分" min="0" step="5" title="预估时间（分钟）">
+        <button type="submit">添加</button>
+      </form>
+    </section>
+
+    <!-- 右栏：番茄钟 + 统计 -->
+    <aside class="col col-focus">
+      <div class="pomodoro" id="pomodoro">
+        <div class="pomo-phase" id="pomoPhase">专注</div>
+        <div class="pomo-clock" id="pomoClock">25:00</div>
+        <div class="pomo-task" id="pomoTask">未选择任务</div>
+        <div class="pomo-controls">
+          <button id="pomoStart" class="pomo-btn primary">开始</button>
+          <button id="pomoReset" class="pomo-btn">重置</button>
+          <button id="pomoSkip" class="pomo-btn">跳过</button>
+        </div>
+        <div class="pomo-count" id="pomoCount">今日 0 个番茄</div>
+      </div>
+
+      <div class="dist" id="dist">
+        <h3>今日时间分布</h3>
+        <div class="dist-bars" id="distBars"></div>
+      </div>
+
+      <div class="settings">
+        <details>
+          <summary>番茄钟设置</summary>
+          <label>专注 <input type="number" id="setWork" min="1" max="90" value="25"> 分</label>
+          <label>短休 <input type="number" id="setBreak" min="1" max="30" value="5"> 分</label>
+          <label>长休 <input type="number" id="setLongBreak" min="1" max="60" value="15"> 分</label>
+          <label>每 <input type="number" id="setLongEvery" min="2" max="8" value="4"> 个番茄后长休</label>
+        </details>
+      </div>
+    </aside>
+  </main>
+
+  <main class="library-page" id="libraryPage" hidden>
+    <aside class="library-side">
+      <div class="library-side-heading"><span class="library-monogram">资</span><div><p class="eyebrow">PERSONAL LIBRARY</p><h2>资料库</h2></div></div>
+      <p class="library-subtitle">让学习、灵感与方法各归其位。</p>
+      <div class="library-sections" id="librarySections" role="tablist" aria-label="知识空间分页">
+        <button type="button" role="tab" aria-selected="true" class="active" data-section="study">学习库 <small>资料与要点</small></button>
+        <button type="button" role="tab" aria-selected="false" data-section="ideas">闪念库 <small>捕捉灵感</small></button>
+        <button type="button" role="tab" aria-selected="false" data-section="methods">做事方法库 <small>沉淀可复用的方法</small></button>
+      </div>
+      <button class="library-create" type="button" id="libraryCreate">＋ 收录资料</button>
+      <label class="library-search-label" for="librarySearch">检索资料</label>
+      <input type="search" id="librarySearch" placeholder="搜索标题、标签和正文…" autocomplete="off">
+      <div class="library-filter" id="libraryFilter" role="group" aria-label="按类型筛选">
+        <button type="button" class="active" data-kind="all">全部</button>
+        <button type="button" data-kind="article">文章</button>
+        <button type="button" data-kind="book">书籍</button>
+        <button type="button" data-kind="course">课程</button>
+        <button type="button" data-kind="note">笔记</button>
+      </div>
+      <p class="library-count" id="libraryCount">正在加载…</p>
+      <div class="library-list" id="libraryList" aria-label="资料列表"></div>
+      <div class="library-pagination"><button type="button" id="libraryPrev" aria-label="上一页">‹</button><span id="libraryPageLabel">1 / 1</span><button type="button" id="libraryNext" aria-label="下一页">›</button></div>
+    </aside>
+    <section class="library-main">
+      <div class="library-hero"><div><p class="eyebrow" id="libraryHeroEyebrow">LEARNING LIBRARY</p><h2 id="libraryHeroTitle">从资料，到自己的理解。</h2><p id="libraryHeroText">收录原文 · 提炼重点 · 定期回看</p></div><span class="library-hero-symbol" aria-hidden="true">✳</span></div>
+      <div class="library-notice" id="libraryNotice" role="status" hidden></div>
+      <div class="library-blank" id="libraryBlank"><span aria-hidden="true">◇</span><h3 id="libraryBlankTitle">从一篇值得记住的资料开始</h3><p id="libraryBlankText">选择左侧的资料，或者新建一份资料。</p></div>
+      <form id="libraryForm" class="library-form" hidden>
+        <div class="library-form-header"><div><p class="eyebrow" id="libraryFormEyebrow">NEW MATERIAL</p><h3 id="libraryFormHeading">新资料</h3></div><div class="library-actions"><button type="button" id="libraryDelete" class="library-delete" hidden>删除</button><button type="submit" class="library-save">保存资料</button></div></div>
+        <div class="library-fields">
+          <label>标题 <input id="libraryTitle" required maxlength="160" placeholder="这份资料讲了什么？"></label>
+          <label id="libraryKindField">类型 <select id="libraryKind"><option value="article">文章</option><option value="book">书籍</option><option value="course">课程</option><option value="note">笔记</option></select></label>
+          <label id="libraryUrlField">来源链接 <input id="libraryUrl" type="url" maxlength="2000" placeholder="https://…（选填）"></label>
+          <label>标签 <input id="libraryTags" maxlength="240" placeholder="用逗号分隔，如：专利法, 实务"></label>
+        </div>
+        <div class="library-writing"><label><span class="library-body-label">资料正文 / 摘录</span> <span id="libraryBodyHint">保留重要原文，方便核对</span><textarea id="libraryBody" rows="12" placeholder="粘贴文章、书摘或课程文字；此版本暂不上传文件。"></textarea></label><label><span class="library-points-label">我的学习要点</span> <span id="libraryPointsHint">总结、疑问、实践线索</span><textarea id="libraryHighlights" rows="12" placeholder="写下关键概念、结论和想继续追问的问题…"></textarea></label></div>
+        <div class="library-ai" id="libraryAi"><div><strong>✳ 辅助提炼</strong><p>可复制提炼指令，交给你使用的 AI 助手；生成结果核对后粘贴到学习要点。自动提炼需另外配置服务端 AI 接口。</p></div><button type="button" id="libraryCopyPrompt">复制提炼指令</button></div>
+        <p class="library-updated" id="libraryUpdated"></p>
+      </form>
+    </section>
+  </main>
+
+  <!-- LemonPL：按日期组织的列表看板 -->
+  <main class="lemon-page" id="lemonPage" hidden>
+    <aside class="lemon-calendar-card">
+      <div class="lemon-calendar-head">
+        <button type="button" id="calendarPrev" aria-label="上个月">‹</button>
+        <h2 id="calendarTitle">--</h2>
+        <button type="button" id="calendarNext" aria-label="下个月">›</button>
+      </div>
+      <div class="calendar-weekdays" aria-hidden="true">
+        <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+      </div>
+      <div class="calendar-grid" id="calendarGrid"></div>
+      <button type="button" class="calendar-today" id="calendarToday">回到今天</button>
+      <div class="calendar-legend"><span class="legend-dot"></span> 有安排的日期</div>
+      <section class="lemon-action-bar" aria-labelledby="actionBarTitle">
+        <div class="lemon-action-head"><div><p class="eyebrow">ACTION RANGE</p><h3 id="actionBarTitle">周期行动栏</h3><p>选择任意连续日期范围建立总行动。</p></div></div>
+        <form id="actionBarForm" class="action-bar-form">
+          <input type="text" id="actionBarTitleInput" placeholder="行动栏名称" maxlength="80" required>
+          <label>从 <input type="date" id="actionBarStart" required></label>
+          <label>到 <input type="date" id="actionBarEnd" required></label>
+          <button type="submit">＋ 创建</button>
+        </form>
+        <div id="actionBars" class="action-bars"></div>
+      </section>
+    </aside>
+
+    <section class="lemon-board-area">
+      <div class="lemon-board-head">
+        <div>
+          <p class="eyebrow">LEMON PLAN</p>
+          <h2 id="lemonDateTitle">今日计划</h2>
+          <p id="lemonDateSummary">选择左侧日期，为当天创建列表。</p>
+        </div>
+        <form class="lemon-add-list" id="lemonAddListForm">
+          <input type="text" id="lemonNewListTitle" placeholder="新建列表，如：上午重点" maxlength="40" autocomplete="off">
+          <button type="submit">＋ 添加列表</button>
+        </form>
+      </div>
+      <div class="lemon-lists" id="lemonLists"></div>
+      <div class="lemon-empty" id="lemonEmpty">
+        <span class="lemon-empty-icon">🍋</span>
+        <h3>这一天还没有列表</h3>
+        <p>从上方创建一个列表，再把当天要处理的事项放进去。</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- 任务详情弹层（编辑 + 子任务） -->
+  <div class="modal-overlay" id="modalOverlay" hidden>
+    <div class="modal" id="taskModal" role="dialog" aria-modal="true">
+      <button class="modal-close" id="modalClose" title="关闭">×</button>
+      <input type="text" class="modal-title" id="modalTitle" maxlength="120">
+      <div class="modal-fields">
+        <label>优先级
+          <select id="modalPriority">
+            <option value="none">无</option>
+            <option value="high">高</option>
+            <option value="mid">中</option>
+            <option value="low">低</option>
+          </select>
+        </label>
+        <label>预估(分) <input type="number" id="modalEstimate" min="0" step="5"></label>
+        <label>截止 <input type="date" id="modalDue"></label>
+        <div class="modal-spent">已花 <strong id="modalSpent">0</strong> 分
+          <div class="modal-time-ops">
+            <button type="button" class="time-btn" data-add="5">+5m</button>
+            <button type="button" class="time-btn" data-add="15">+15m</button>
+            <button type="button" class="time-btn" data-add="30">+30m</button>
+            <button type="button" class="time-btn primary" id="modalTimerToggle">▶ 计时</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-subtasks">
+        <h4>子任务</h4>
+        <ul id="modalSubtasks"></ul>
+        <form id="addSubtaskForm" class="add-subtask">
+          <input type="text" id="newSubtaskTitle" placeholder="添加子任务…" autocomplete="off" maxlength="120">
+          <button type="submit">＋</button>
+        </form>
+      </div>
+      <div class="modal-actions">
+        <button class="danger" id="modalDelete">删除任务</button>
+        <div class="modal-actions-right">
+          <button id="modalArchive">归档到本月</button>
+          <button class="primary" id="modalSave">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <audio id="dingSound" preload="auto"></audio>
+
+  <!-- 归档任务详情弹层（只读 + 恢复/删除） -->
+  <div class="modal-overlay" id="archiveModalOverlay" hidden>
+    <div class="modal archive-modal" role="dialog" aria-modal="true">
+      <button class="modal-close" id="archiveModalClose" title="关闭">×</button>
+      <p class="archive-modal-eyebrow">ARCHIV</p>
+      <h3 class="archive-modal-title" id="archiveModalTitle"></h3>
+      <div class="archive-modal-meta" id="archiveModalMeta"></div>
+      <div class="archive-modal-subs" id="archiveModalSubs"></div>
+      <div class="modal-actions">
+        <button class="danger" id="archiveDeleteBtn">彻底删除</button>
+        <button class="primary" id="archiveRestoreBtn">恢复为待办</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="library.js"></script>
+</body>
+</html>
