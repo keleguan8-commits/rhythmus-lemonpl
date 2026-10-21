@@ -1,0 +1,10 @@
+.git
+.finerwork
+.codegraph
+.wiscode
+outputs
+*.log
+__pycache__
+node_modules
+.env.development.local
+.env.development.example

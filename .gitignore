@@ -1,0 +1,7 @@
+.env.production.local
+.env.development.local
+node_modules/
+outputs/
+.codegraph/
+.wiscode/
+.tidb/

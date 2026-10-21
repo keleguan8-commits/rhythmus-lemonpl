@@ -59,14 +59,19 @@
         activePage: ['lemon', 'library'].includes(saved.activePage) ? saved.activePage : 'rhythm',
         days: saved.days && typeof saved.days === 'object' ? saved.days : {},
         actionBars: Array.isArray(saved.actionBars) ? saved.actionBars : [],
+        archived: saved.archived && typeof saved.archived === 'object' ? saved.archived : { lists: [], actionBars: [], items: [] },
       };
     } catch {
       const now = new Date();
-      return { selectedDate: localDateKey(now), viewYear: now.getFullYear(), viewMonth: now.getMonth(), activePage: 'rhythm', days: {}, actionBars: [] };
+      return { selectedDate: localDateKey(now), viewYear: now.getFullYear(), viewMonth: now.getMonth(), activePage: 'rhythm', days: {}, actionBars: [], archived: { lists: [], actionBars: [], items: [] } };
     }
   }
 
   let lemon = loadLemon();
+  lemon.archived = lemon.archived && typeof lemon.archived === 'object' ? lemon.archived : {};
+  lemon.archived.lists = Array.isArray(lemon.archived.lists) ? lemon.archived.lists : [];
+  lemon.archived.actionBars = Array.isArray(lemon.archived.actionBars) ? lemon.archived.actionBars : [];
+  lemon.archived.items = Array.isArray(lemon.archived.items) ? lemon.archived.items : [];
   function saveLemon() {
     try { localStorage.setItem(LEMON_STORAGE_KEY, JSON.stringify(lemon)); } catch {}
   }
@@ -501,13 +506,13 @@
         <div class="lemon-list-head">
           <h3>${escapeHtml(list.title)}</h3>
           <span>${complete}/${items.length}</span>
-          <button type="button" class="lemon-list-delete" title="删除列表">×</button>
+          <button type="button" class="lemon-list-archive" title="归档列表">↗</button><button type="button" class="lemon-list-delete" title="删除列表">×</button>
         </div>
         <ul class="lemon-items">
           ${items.map(item => `<li class="lemon-item ${item.done ? 'done' : ''}" data-item-id="${item.id}">
             <button type="button" class="lemon-item-check" aria-label="标记完成">${item.done ? '✓' : ''}</button>
             <input class="lemon-item-title" type="text" value="${escapeHtml(item.title)}" maxlength="120" aria-label="编辑事项文字">
-            <button type="button" class="lemon-item-delete" title="删除事项">×</button>
+            <button type="button" class="lemon-item-archive" title="归档事项">↗</button><button type="button" class="lemon-item-delete" title="删除事项">×</button>
           </li>`).join('')}
         </ul>
         <form class="lemon-add-item">
@@ -517,6 +522,7 @@
       </section>`;
     }).join('');
     renderActionBars();
+    renderLemonArchive();
   }
 
   function formatRange(start, end) { return start === end ? start : `${start} → ${end}`; }
@@ -526,10 +532,21 @@
     const bars = Array.isArray(lemon.actionBars) ? lemon.actionBars : [];
     box.innerHTML = bars.length ? bars.map(bar => `
       <article class="action-bar" data-bar-id="${bar.id}">
-        <div class="action-bar-heading"><div><h4>${escapeHtml(bar.title)}</h4><span>${formatRange(bar.start, bar.end)}</span></div><button type="button" class="action-bar-delete" title="删除行动栏">×</button></div>
-        <ul>${(bar.items || []).map(item => `<li class="action-bar-item ${item.done ? 'done' : ''}" data-item-id="${item.id}"><button type="button" class="action-bar-check">${item.done ? '✓' : ''}</button><input class="action-bar-item-title" type="text" value="${escapeHtml(item.title)}" maxlength="120"><button type="button" class="action-bar-item-delete">×</button></li>`).join('')}</ul>
+        <div class="action-bar-heading"><div><h4>${escapeHtml(bar.title)}</h4><span>${formatRange(bar.start, bar.end)}</span></div><div><button type="button" class="action-bar-archive" title="归档行动栏">↗</button><button type="button" class="action-bar-delete" title="删除行动栏">×</button></div></div>
+        <ul>${(bar.items || []).map(item => `<li class="action-bar-item ${item.done ? 'done' : ''}" data-item-id="${item.id}"><button type="button" class="action-bar-check">${item.done ? '✓' : ''}</button><input class="action-bar-item-title" type="text" value="${escapeHtml(item.title)}" maxlength="120"><button type="button" class="action-bar-item-archive" title="归档事项">↗</button><button type="button" class="action-bar-item-delete">×</button></li>`).join('')}</ul>
         <form class="action-bar-add"><input type="text" placeholder="添加周期行动…" maxlength="120"><button type="submit">＋</button></form>
       </article>`).join('') : '<p class="action-bars-empty">还没有周期行动栏。你可以按任意日期范围创建。</p>';
+  }
+
+  function renderLemonArchive() {
+    const box = $('lemonArchive');
+    if (!box) return;
+    const a = lemon.archived || { lists: [], actionBars: [], items: [] };
+    const total = a.lists.length + a.actionBars.length + a.items.length;
+    box.innerHTML = `<details class="lemon-archive-box"><summary>已归档内容 <span>${total}</span></summary><div class="lemon-archive-content">${total ? `
+      ${a.lists.map(x => `<div class="lemon-archive-row"><span>列表 · ${escapeHtml(x.title)}</span><button type="button" data-restore-kind="list" data-id="${x.id}">恢复</button></div>`).join('')}
+      ${a.actionBars.map(x => `<div class="lemon-archive-row"><span>行动栏 · ${escapeHtml(x.title)}</span><button type="button" data-restore-kind="bar" data-id="${x.id}">恢复</button></div>`).join('')}
+      ${a.items.map(x => `<div class="lemon-archive-row"><span>事项 · ${escapeHtml(x.title)}</span><button type="button" data-restore-kind="item" data-id="${x.id}">恢复</button></div>`).join('')}` : '<p>暂无归档内容。</p>'}</div></details>`;
   }
 
   function renderLemon() {
@@ -601,13 +618,47 @@
       }
       return;
     }
+    if (e.target.closest('.lemon-list-archive')) {
+      const day = lemon.days[lemon.selectedDate];
+      lemon.archived = lemon.archived || { lists: [], actionBars: [], items: [] };
+      lemon.archived.lists.push({ ...structuredClone(list), date: lemon.selectedDate, archivedAt: localDateKey() });
+      day.lists = lists.filter(item => item.id !== list.id);
+      if (!day.lists.length) delete lemon.days[lemon.selectedDate];
+      saveLemon(); renderLemon(); return;
+    }
     const itemEl = e.target.closest('.lemon-item');
     if (!itemEl) return;
     if (e.target.closest('.lemon-item-title')) return;
     const item = (list.items || []).find(value => value.id === itemEl.dataset.itemId);
     if (!item) return;
     if (e.target.closest('.lemon-item-check')) item.done = !item.done;
+    if (e.target.closest('.lemon-item-archive')) {
+      lemon.archived = lemon.archived || { lists: [], actionBars: [], items: [] };
+      lemon.archived.items.push({ ...structuredClone(item), date: lemon.selectedDate, listTitle: list.title, archivedAt: localDateKey() });
+      list.items = list.items.filter(value => value.id !== item.id);
+    }
     if (e.target.closest('.lemon-item-delete')) list.items = list.items.filter(value => value.id !== item.id);
+    saveLemon(); renderLemon();
+  });
+
+  $('actionBars').addEventListener('click', (e) => {
+    const barEl = e.target.closest('.action-bar'); if (!barEl) return;
+    const bar = lemon.actionBars.find(value => value.id === barEl.dataset.barId); if (!bar) return;
+    if (e.target.closest('.action-bar-archive')) {
+      lemon.archived = lemon.archived || { lists: [], actionBars: [], items: [] };
+      lemon.archived.actionBars.push({ ...structuredClone(bar), archivedAt: localDateKey() });
+      lemon.actionBars = lemon.actionBars.filter(value => value.id !== bar.id);
+      saveLemon(); renderLemonBoard(); return;
+    }
+  });
+
+  $('lemonArchive').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-restore-kind]'); if (!btn) return;
+    const a = lemon.archived || { lists: [], actionBars: [], items: [] };
+    const kind = btn.dataset.restoreKind, id = btn.dataset.id;
+    if (kind === 'list') { const x = a.lists.find(v => v.id === id); if (x) { lemonListsFor(x.date || lemon.selectedDate, true).push(x); a.lists = a.lists.filter(v => v.id !== id); } }
+    if (kind === 'bar') { const x = a.actionBars.find(v => v.id === id); if (x) { lemon.actionBars.push(x); a.actionBars = a.actionBars.filter(v => v.id !== id); } }
+    if (kind === 'item') { const x = a.items.find(v => v.id === id); if (x) { const listsAtDate = lemonListsFor(x.date || lemon.selectedDate, true); const target = listsAtDate.find(v => v.title === x.listTitle) || listsAtDate[0] || { id: uid(), title: x.listTitle || '恢复事项', items: [] }; if (!listsAtDate.includes(target)) listsAtDate.push(target); target.items = target.items || []; target.items.push({ id: x.id, title: x.title, done: x.done }); a.items = a.items.filter(v => v.id !== id); } }
     saveLemon(); renderLemon();
   });
 
@@ -647,6 +698,7 @@
     const itemEl = e.target.closest('.action-bar-item'); if (!itemEl) return;
     const item = (bar.items || []).find(value => value.id === itemEl.dataset.itemId); if (!item) return;
     if (e.target.closest('.action-bar-check')) { item.done = !item.done; saveLemon(); renderActionBars(); }
+    if (e.target.closest('.action-bar-item-archive')) { lemon.archived.items.push({ ...structuredClone(item), actionBarTitle: bar.title, archivedAt: localDateKey() }); bar.items = bar.items.filter(value => value.id !== item.id); saveLemon(); renderLemonBoard(); }
     if (e.target.closest('.action-bar-item-delete')) { bar.items = bar.items.filter(value => value.id !== item.id); saveLemon(); renderActionBars(); }
   });
 

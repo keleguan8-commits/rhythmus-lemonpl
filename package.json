@@ -1,0 +1,12 @@
+{
+  "name": "rhythmus-library",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "build": "node --check server.mjs && node --check app.js && node --check library.js"
+  },
+  "dependencies": {
+    "mysql2": "^3.15.0"
+  }
+}

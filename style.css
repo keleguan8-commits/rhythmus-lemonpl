@@ -405,10 +405,11 @@ body {
 .lemon-list-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px 10px; border-bottom: 1px solid var(--border); }
 .lemon-list-head h3 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .lemon-list-head span { font-size: 11px; color: var(--text-faint); }
-.lemon-list-delete, .lemon-item-delete {
+.lemon-list-delete, .lemon-item-delete, .lemon-list-archive, .lemon-item-archive, .action-bar-archive, .action-bar-item-archive {
   border: none; background: none; color: var(--text-faint); cursor: pointer; font-size: 16px;
 }
 .lemon-list-delete:hover, .lemon-item-delete:hover { color: var(--high); }
+.lemon-list-archive:hover, .lemon-item-archive:hover, .action-bar-archive:hover, .action-bar-item-archive:hover { color: var(--accent); }
 .lemon-items { list-style: none; display: flex; flex-direction: column; gap: 5px; padding: 9px; }
 .lemon-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px; border-radius: 8px; background: var(--surface); }
 .lemon-item > span { flex: 1; min-width: 0; line-height: 1.45; word-break: break-word; }
@@ -604,6 +605,15 @@ input[type=number] { width: 70px; }
 .action-bar-add { display: flex; gap: 6px; }
 .action-bar-add input { flex: 1; }
 .action-bars-empty { color: var(--text-faint); font-size: 13px; margin: 0; }
+.lemon-archive { margin-top: 14px; }
+.lemon-archive-box { border-top: 1px solid var(--line); padding-top: 10px; }
+.lemon-archive-box summary { cursor: pointer; color: var(--text-muted); font-size: 13px; }
+.lemon-archive-box summary span { float: right; padding: 1px 7px; border-radius: 10px; background: var(--surface-2); }
+.lemon-archive-content { display: grid; gap: 6px; margin-top: 9px; }
+.lemon-archive-content > p { color: var(--text-faint); font-size: 12px; }
+.lemon-archive-row { display: flex; align-items: center; gap: 6px; padding: 7px; border-radius: 8px; background: var(--surface-2); font-size: 12px; }
+.lemon-archive-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lemon-archive-row button { border: 0; background: transparent; color: var(--accent); cursor: pointer; }
 .lemon-item-title { flex: 1; min-width: 0; border: 0; background: transparent; color: inherit; padding: 4px 2px; font: inherit; }
 .lemon-item-title:focus, .action-bar-item-title:focus { outline: 2px solid var(--accent-soft); border-radius: 5px; background: var(--surface); }
 .add-subtask { display: flex; gap: 6px; }
