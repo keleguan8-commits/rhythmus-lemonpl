@@ -7,6 +7,22 @@
 (() => {
   'use strict';
 
+  const API_BASE = window.WORKBENCH_API_BASE || '';
+  let authUser = null;
+  let authRegister = false;
+  let cloudSyncTimer = 0;
+  const api = (path, options = {}) => fetch(API_BASE + path, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
+  async function cloudLoad() {
+    try { const r = await api('/api/workbench'); if (!r.ok) return null; return (await r.json()).data; } catch { return null; }
+  }
+  function cloudSave() {
+    if (!authUser) return;
+    clearTimeout(cloudSyncTimer);
+    cloudSyncTimer = setTimeout(async () => {
+      try { await api('/api/workbench', { method: 'PUT', body: JSON.stringify({ data: { rhythm: rhythm, lemon, state } }) }); } catch {}
+    }, 500);
+  }
+
   // ---------- 工具 ----------
   const $ = (id) => document.getElementById(id);
   const todayKey = () => new Date().toISOString().slice(0, 10); // YYYY-MM-DD
@@ -74,10 +90,12 @@
   lemon.archived.items = Array.isArray(lemon.archived.items) ? lemon.archived.items : [];
   function saveLemon() {
     try { localStorage.setItem(LEMON_STORAGE_KEY, JSON.stringify(lemon)); } catch {}
+    cloudSave();
   }
 
   function saveRhythm() {
     try { localStorage.setItem(RHYTHM_STORAGE_KEY, JSON.stringify(rhythm)); } catch {}
+    cloudSave();
   }
 
   function renderRhythm() {
@@ -174,6 +192,7 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
+      cloudSave();
     }, 120);
   }
 
@@ -1263,4 +1282,56 @@
   $('morningStart').value = rhythm.morningStart;
   renderAll();
   switchPage(lemon.activePage);
+
+  // ---------- 登录与账号同步 ----------
+  const gate = $('authGate');
+  function showGate(show) {
+    gate.hidden = !show;
+    $('accountBox').hidden = !authUser;
+    if (authUser) $('accountEmail').textContent = authUser.email;
+  }
+  function showAuthError(message) { $('authError').textContent = message || ''; }
+  $('authSwitch').addEventListener('click', () => {
+    authRegister = !authRegister;
+    document.querySelector('.auth-card h2').textContent = authRegister ? '注册工作台' : '登录工作台';
+    $('authSwitch').textContent = authRegister ? '已有账号？登录' : '没有账号？注册';
+    $('authForm').querySelector('button').textContent = authRegister ? '注册' : '登录';
+    showAuthError('');
+  });
+  $('authForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const email = $('authEmail').value.trim(), password = $('authPassword').value;
+    try {
+      const r = await api(authRegister ? '/api/auth/register' : '/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+      const payload = await r.json();
+      if (!r.ok) { showAuthError(payload.error || '操作失败'); return; }
+      authUser = payload.user; showGate(false);
+      const cloud = await cloudLoad();
+      if (cloud && typeof cloud === 'object') {
+        if (cloud.state) { state = cloud.state; localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+        if (cloud.rhythm) { rhythm = cloud.rhythm; localStorage.setItem(RHYTHM_STORAGE_KEY, JSON.stringify(rhythm)); }
+        if (cloud.lemon) { lemon = cloud.lemon; localStorage.setItem(LEMON_STORAGE_KEY, JSON.stringify(lemon)); }
+        renderAll(); switchPage(lemon.activePage);
+      }
+    } catch { showAuthError('网络异常，请稍后再试'); }
+  });
+  $('logoutBtn').addEventListener('click', async () => {
+    try { await api('/api/auth/logout', { method: 'POST' }); } catch {}
+    authUser = null; showGate(true); showAuthError('已退出登录');
+  });
+  (async () => {
+    try {
+      const r = await api('/api/auth/me');
+      if (r.ok) {
+        authUser = (await r.json()).user; showGate(false);
+        const cloud = await cloudLoad();
+        if (cloud && typeof cloud === 'object') {
+          if (cloud.state) { state = cloud.state; localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+          if (cloud.rhythm) { rhythm = cloud.rhythm; localStorage.setItem(RHYTHM_STORAGE_KEY, JSON.stringify(rhythm)); }
+          if (cloud.lemon) { lemon = cloud.lemon; localStorage.setItem(LEMON_STORAGE_KEY, JSON.stringify(lemon)); }
+          renderAll(); switchPage(lemon.activePage);
+        }
+      } else showGate(true);
+    } catch { showGate(true); }
+  })();
 })();

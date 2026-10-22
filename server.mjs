@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createPool } from 'mysql2/promise';
-import { timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual, randomBytes, scryptSync, randomUUID, createHash } from 'node:crypto';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const prod = process.env.NODE_ENV === 'production';
@@ -26,6 +26,24 @@ const pool = createPool({ host: process.env.TIDB_HOST, port: Number(process.env.
   user: process.env.TIDB_USERNAME, password: process.env.TIDB_PASSWORD,
   database: process.env.TIDB_DATABASE, connectionLimit: 5, charset: 'utf8mb4' });
 await pool.query('SELECT 1');
+await pool.query(`CREATE TABLE IF NOT EXISTS workbench_users (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  email VARCHAR(320) NOT NULL UNIQUE,
+  password_hash VARBINARY(128) NOT NULL,
+  password_salt VARBINARY(32) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+)`);
+await pool.query(`CREATE TABLE IF NOT EXISTS workbench_sessions (
+  token_hash CHAR(64) NOT NULL PRIMARY KEY,
+  user_id CHAR(36) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  INDEX (user_id), INDEX (expires_at)
+)`);
+await pool.query(`CREATE TABLE IF NOT EXISTS workbench_data (
+  user_id CHAR(36) NOT NULL PRIMARY KEY,
+  data_json MEDIUMTEXT NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+)`);
 await pool.query(`CREATE TABLE IF NOT EXISTS library_materials (
   id CHAR(36) NOT NULL PRIMARY KEY,
   title VARCHAR(160) NOT NULL,
@@ -45,6 +63,29 @@ console.log('资料库数据库连接正常');
 function json(response, code, value) {
   response.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
   response.end(JSON.stringify(value));
+}
+function cookieValue(request, name) {
+  const raw = request.headers.cookie || '';
+  const hit = raw.split(';').map(v => v.trim()).find(v => v.startsWith(`${name}=`));
+  return hit ? decodeURIComponent(hit.slice(name.length + 1)) : '';
+}
+function setCookie(response, token, maxAge = 60 * 60 * 24 * 30) {
+  response.setHeader('Set-Cookie', `rhythmus_session=${encodeURIComponent(token)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Lax; Secure`);
+}
+async function sessionUser(request) {
+  const token = cookieValue(request, 'rhythmus_session');
+  if (!token) return null;
+  const hash = requireHash(token);
+  const [[row]] = await pool.execute('SELECT u.id,u.email FROM workbench_sessions s JOIN workbench_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>UTC_TIMESTAMP()', [hash]);
+  return row || null;
+}
+function requireHash(token) { return createHash('sha256').update(token).digest('hex'); }
+function validEmail(value) { return typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 320; }
+function authInput(data) {
+  if (!data || !validEmail(data.email) || typeof data.password !== 'string' || data.password.length < 8 || data.password.length > 200) {
+    const error = new Error('请输入有效邮箱和至少 8 位密码'); error.status = 400; throw error;
+  }
+  return { email: data.email.trim().toLowerCase(), password: data.password };
 }
 async function input(request) {
   let text = '';
@@ -68,6 +109,14 @@ async function input(request) {
   }
   item.title = item.title.trim(); return item;
 }
+async function jsonInput(request) {
+  let text = '';
+  for await (const chunk of request) {
+    text += chunk.toString('utf8');
+    if (text.length > 5_000_000) { const error = new Error('请求内容过大'); error.status = 413; throw error; }
+  }
+  try { return JSON.parse(text); } catch { const error = new Error('请求内容不是有效 JSON'); error.status = 400; throw error; }
+}
 function authorized(request) {
   if (!process.env.LIBRARY_ACCESS_KEY) return true; // development on loopback only
   let supplied = '';
@@ -88,6 +137,49 @@ const server = http.createServer(async (request, response) => {
     const requested = new URL(request.url, 'http://localhost');
     const route = requested.pathname;
     if (route === '/health' && request.method === 'GET') return json(response, 200, { ok: true });
+    if (route === '/api/auth/register' && request.method === 'POST') {
+      const data = authInput(await jsonInput(request));
+      const [[exists]] = await pool.execute('SELECT id FROM workbench_users WHERE email=?', [data.email]);
+      if (exists) return json(response, 409, { error: '该邮箱已注册' });
+      const salt = randomBytes(16), hash = scryptSync(data.password, salt, 64);
+      const id = randomUUID();
+      await pool.execute('INSERT INTO workbench_users (id,email,password_hash,password_salt) VALUES (?,?,?,?)', [id, data.email, hash, salt]);
+      const token = randomBytes(32).toString('hex');
+      await pool.execute('INSERT INTO workbench_sessions (token_hash,user_id,expires_at) VALUES (?,?,DATE_ADD(UTC_TIMESTAMP(), INTERVAL 30 DAY))', [requireHash(token), id]);
+      setCookie(response, token); return json(response, 201, { user: { id, email: data.email } });
+    }
+    if (route === '/api/auth/login' && request.method === 'POST') {
+      const data = authInput(await jsonInput(request));
+      const [[user]] = await pool.execute('SELECT * FROM workbench_users WHERE email=?', [data.email]);
+      if (!user) return json(response, 401, { error: '邮箱或密码错误' });
+      const actual = scryptSync(data.password, user.password_salt, 64);
+      if (!timingSafeEqual(actual, Buffer.from(user.password_hash))) return json(response, 401, { error: '邮箱或密码错误' });
+      const token = randomBytes(32).toString('hex');
+      await pool.execute('INSERT INTO workbench_sessions (token_hash,user_id,expires_at) VALUES (?,?,DATE_ADD(UTC_TIMESTAMP(), INTERVAL 30 DAY))', [requireHash(token), user.id]);
+      setCookie(response, token); return json(response, 200, { user: { id: user.id, email: user.email } });
+    }
+    if (route === '/api/auth/me' && request.method === 'GET') {
+      const user = await sessionUser(request); return json(response, user ? 200 : 401, user ? { user } : { error: '未登录' });
+    }
+    if (route === '/api/auth/logout' && request.method === 'POST') {
+      const token = cookieValue(request, 'rhythmus_session');
+      if (token) await pool.execute('DELETE FROM workbench_sessions WHERE token_hash=?', [requireHash(token)]);
+      setCookie(response, '', 0); return json(response, 200, { ok: true });
+    }
+    if (route === '/api/workbench' && ['GET', 'PUT'].includes(request.method)) {
+      const user = await sessionUser(request);
+      if (!user) return json(response, 401, { error: '请先登录' });
+      if (request.method === 'GET') {
+        const [[row]] = await pool.execute('SELECT data_json FROM workbench_data WHERE user_id=?', [user.id]);
+        return json(response, 200, { data: row ? JSON.parse(row.data_json) : null });
+      }
+      const raw = await jsonInput(request);
+      if (!raw || typeof raw.data !== 'object' || raw.data === null) return json(response, 400, { error: '数据格式错误' });
+      const text = JSON.stringify(raw.data);
+      if (text.length > 5_000_000) return json(response, 413, { error: '工作台数据过大' });
+      await pool.execute(`INSERT INTO workbench_data (user_id,data_json) VALUES (?,?) ON DUPLICATE KEY UPDATE data_json=VALUES(data_json)`, [user.id, text]);
+      return json(response, 200, { ok: true });
+    }
     if (!authorized(request)) {
       response.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Library"', 'Cache-Control': 'no-store' });
       response.end('Authentication required'); return;

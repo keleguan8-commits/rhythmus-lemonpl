@@ -7,6 +7,19 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div class="auth-gate" id="authGate" hidden>
+    <div class="auth-card">
+      <div class="auth-mark">◆</div><h2>登录工作台</h2>
+      <p>登录后可在不同电脑和浏览器同步你的工作台数据。</p>
+      <form id="authForm">
+        <input id="authEmail" type="email" autocomplete="email" placeholder="邮箱" required>
+        <input id="authPassword" type="password" autocomplete="current-password" placeholder="密码（至少 8 位）" minlength="8" required>
+        <button class="auth-submit" type="submit">登录</button>
+      </form>
+      <button class="auth-switch" id="authSwitch" type="button">没有账号？注册</button>
+      <div class="auth-error" id="authError" role="alert"></div>
+    </div>
+  </div>
   <!-- 顶部栏 -->
   <header class="topbar">
     <div class="brand">
@@ -14,6 +27,7 @@
       <h1>工作台</h1>
       <span class="brand-sub">Rhythmus</span>
     </div>
+    <div class="account-box" id="accountBox" hidden><span id="accountEmail"></span><button id="logoutBtn" type="button">退出</button></div>
     <nav class="page-switcher" aria-label="页面切换">
       <button class="page-switch active" data-page="rhythm">Rhythmus</button>
       <button class="page-switch" data-page="lemon">LemonPL</button>
