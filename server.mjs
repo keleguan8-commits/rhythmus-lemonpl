@@ -87,6 +87,7 @@ const server = http.createServer(async (request, response) => {
   try {
     const requested = new URL(request.url, 'http://localhost');
     const route = requested.pathname;
+    if (route === '/health' && request.method === 'GET') return json(response, 200, { ok: true });
     if (!authorized(request)) {
       response.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Library"', 'Cache-Control': 'no-store' });
       response.end('Authentication required'); return;

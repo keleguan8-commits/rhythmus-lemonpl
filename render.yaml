@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: rhythmus-library
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "80"
+      - key: TIDB_HOST
+        sync: false
+      - key: TIDB_PORT
+        sync: false
+      - key: TIDB_DATABASE
+        sync: false
+      - key: TIDB_USERNAME
+        sync: false
+      - key: TIDB_PASSWORD
+        sync: false
+      - key: LIBRARY_ACCESS_KEY
+        generateValue: true

@@ -1,7 +1,7 @@
-FROM harbor.qihoo.net/xny-ztzcb-finer-library/fw-node:24.18.0 AS runtime
+FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --registry=https://registry.qnpm.qihoo.net
+RUN npm ci --omit=dev
 COPY index.html style.css app.js library.js server.mjs ./
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
