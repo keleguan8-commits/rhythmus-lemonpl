@@ -211,7 +211,7 @@ const server = http.createServer(async (request, response) => {
       return json(response, 200, { ok: true });
     }
     if (route.startsWith('/api/library')) {
-      if (!authorized(request)) {
+      if (!authorized(request) && !(await sessionUser(request))) {
         response.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Library"', 'Cache-Control': 'no-store' });
         response.end('Authentication required'); return;
       }
@@ -232,7 +232,8 @@ const server = http.createServer(async (request, response) => {
         const condition = where.join(' AND ');
         const [countRows] = await pool.execute(`SELECT COUNT(*) AS total FROM library_materials WHERE ${condition}`, args);
         const count = (Array.isArray(countRows) ? countRows : countRows?.rows || [])[0];
-        const [items] = await pool.execute(`SELECT id,title,kind,section,tags,updated_at FROM library_materials WHERE ${condition} ORDER BY updated_at DESC,id DESC LIMIT 30 OFFSET ${(page - 1) * 30}`, args);
+        const [itemResult] = await pool.execute(`SELECT id,title,kind,section,tags,updated_at FROM library_materials WHERE ${condition} ORDER BY updated_at DESC,id DESC LIMIT 30 OFFSET ${(page - 1) * 30}`, args);
+        const items = Array.isArray(itemResult) ? itemResult : itemResult?.rows || [];
         return json(response, 200, { items, total: Number(count.total), page });
       }
       if (route === '/api/library' && request.method === 'POST') {
