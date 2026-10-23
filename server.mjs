@@ -35,7 +35,10 @@ function pgSql(sql) {
 }
 const pool = postgres ? {
   async query(sql, args = []) { const r = await rawPool.query(pgSql(sql), args); return [r.rows, r.fields]; },
-  async execute(sql, args = []) { const r = await rawPool.query(pgSql(sql), args); return [r.rows.length ? r.rows : { affectedRows: r.rowCount }, r.fields]; },
+  async execute(sql, args = []) {
+    const r = await rawPool.query(pgSql(sql), args);
+    return [{ affectedRows: r.rowCount, rows: r.rows }, r.fields];
+  },
 } : rawPool;
 await pool.query('SELECT 1');
 await pool.query(`CREATE TABLE IF NOT EXISTS workbench_users (
@@ -93,7 +96,9 @@ async function sessionUser(request) {
   const token = cookieValue(request, 'rhythmus_session');
   if (!token) return null;
   const hash = requireHash(token);
-  const [[row]] = await pool.execute('SELECT u.id,u.email FROM workbench_sessions s JOIN workbench_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>UTC_TIMESTAMP()', [hash]);
+  const [result] = await pool.execute('SELECT u.id,u.email FROM workbench_sessions s JOIN workbench_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>UTC_TIMESTAMP()', [hash]);
+  const sessionRows = Array.isArray(result) ? result : (result?.rows || []);
+  const row = sessionRows[0] || null;
   return row || null;
 }
 function requireHash(token) { return createHash('sha256').update(token).digest('hex'); }
@@ -156,7 +161,8 @@ const server = http.createServer(async (request, response) => {
     if (route === '/health' && request.method === 'GET') return json(response, 200, { ok: true });
     if (route === '/api/auth/register' && request.method === 'POST') {
       const data = authInput(await jsonInput(request));
-      const [[exists]] = await pool.execute('SELECT id FROM workbench_users WHERE email=?', [data.email]);
+      const [existsRows] = await pool.execute('SELECT id FROM workbench_users WHERE email=?', [data.email]);
+      const exists = (Array.isArray(existsRows) ? existsRows : existsRows?.rows || [])[0];
       if (exists) return json(response, 409, { error: '该邮箱已注册' });
       const salt = randomBytes(16), hash = scryptSync(data.password, salt, 64);
       const id = randomUUID();
@@ -167,7 +173,8 @@ const server = http.createServer(async (request, response) => {
     }
     if (route === '/api/auth/login' && request.method === 'POST') {
       const data = authInput(await jsonInput(request));
-      const [[user]] = await pool.execute('SELECT * FROM workbench_users WHERE email=?', [data.email]);
+      const [userRows] = await pool.execute('SELECT * FROM workbench_users WHERE email=?', [data.email]);
+      const user = (Array.isArray(userRows) ? userRows : userRows?.rows || [])[0];
       if (!user) return json(response, 401, { error: '邮箱或密码错误' });
       const salt = Buffer.isBuffer(user.password_salt) ? user.password_salt : Buffer.from(user.password_salt);
       const actual = scryptSync(data.password, salt, 64);
@@ -188,7 +195,8 @@ const server = http.createServer(async (request, response) => {
       const user = await sessionUser(request);
       if (!user) return json(response, 401, { error: '请先登录' });
       if (request.method === 'GET') {
-        const [[row]] = await pool.execute('SELECT data_json FROM workbench_data WHERE user_id=?', [user.id]);
+        const [dataRows] = await pool.execute('SELECT data_json FROM workbench_data WHERE user_id=?', [user.id]);
+        const row = (Array.isArray(dataRows) ? dataRows : dataRows?.rows || [])[0];
         const stored = row?.data_json;
         return json(response, 200, { data: stored ? (typeof stored === 'string' ? JSON.parse(stored) : stored) : null });
       }
@@ -222,7 +230,8 @@ const server = http.createServer(async (request, response) => {
           args.push(pattern, pattern, pattern, pattern);
         }
         const condition = where.join(' AND ');
-        const [[count]] = await pool.execute(`SELECT COUNT(*) AS total FROM library_materials WHERE ${condition}`, args);
+        const [countRows] = await pool.execute(`SELECT COUNT(*) AS total FROM library_materials WHERE ${condition}`, args);
+        const count = (Array.isArray(countRows) ? countRows : countRows?.rows || [])[0];
         const [items] = await pool.execute(`SELECT id,title,kind,section,tags,updated_at FROM library_materials WHERE ${condition} ORDER BY updated_at DESC,id DESC LIMIT 30 OFFSET ${(page - 1) * 30}`, args);
         return json(response, 200, { items, total: Number(count.total), page });
       }
@@ -230,12 +239,14 @@ const server = http.createServer(async (request, response) => {
         const item = await input(request), id = crypto.randomUUID();
         await pool.execute('INSERT INTO library_materials (id,title,kind,section,source_url,tags,body,highlights) VALUES (?,?,?,?,?,?,?,?)',
           [id, item.title, item.kind, item.section, item.source_url, item.tags, item.body, item.highlights]);
-        const [[saved]] = await pool.execute(`SELECT ${columns} FROM library_materials WHERE id=?`, [id]);
+        const [savedRows] = await pool.execute(`SELECT ${columns} FROM library_materials WHERE id=?`, [id]);
+        const saved = (Array.isArray(savedRows) ? savedRows : savedRows?.rows || [])[0];
         return json(response, 201, { item: saved });
       }
       const match = route.match(/^\/api\/library\/([\da-f-]{36})$/i);
       if (match && request.method === 'GET') {
-        const [[item]] = await pool.execute(`SELECT ${columns} FROM library_materials WHERE id=?`, [match[1]]);
+        const [itemRows] = await pool.execute(`SELECT ${columns} FROM library_materials WHERE id=?`, [match[1]]);
+        const item = (Array.isArray(itemRows) ? itemRows : itemRows?.rows || [])[0];
         return json(response, item ? 200 : 404, item ? { item } : { error: '资料不存在' });
       }
       if (match && request.method === 'PUT') {
@@ -243,7 +254,8 @@ const server = http.createServer(async (request, response) => {
         const [result] = await pool.execute('UPDATE library_materials SET title=?,kind=?,section=?,source_url=?,tags=?,body=?,highlights=? WHERE id=?',
           [item.title, item.kind, item.section, item.source_url, item.tags, item.body, item.highlights, match[1]]);
         if (!result.affectedRows) return json(response, 404, { error: '资料不存在' });
-        const [[saved]] = await pool.execute(`SELECT ${columns} FROM library_materials WHERE id=?`, [match[1]]);
+        const [savedRows] = await pool.execute(`SELECT ${columns} FROM library_materials WHERE id=?`, [match[1]]);
+        const saved = (Array.isArray(savedRows) ? savedRows : savedRows?.rows || [])[0];
         return json(response, 200, { item: saved });
       }
       if (match && request.method === 'DELETE') {
