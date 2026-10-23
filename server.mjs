@@ -180,11 +180,11 @@ const server = http.createServer(async (request, response) => {
       await pool.execute(`INSERT INTO workbench_data (user_id,data_json) VALUES (?,?) ON DUPLICATE KEY UPDATE data_json=VALUES(data_json)`, [user.id, text]);
       return json(response, 200, { ok: true });
     }
-    if (!authorized(request)) {
-      response.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Library"', 'Cache-Control': 'no-store' });
-      response.end('Authentication required'); return;
-    }
     if (route.startsWith('/api/library')) {
+      if (!authorized(request)) {
+        response.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Library"', 'Cache-Control': 'no-store' });
+        response.end('Authentication required'); return;
+      }
       if (route === '/api/library' && request.method === 'GET') {
         const section = requested.searchParams.get('section') || 'study';
         if (!['study', 'ideas', 'methods'].includes(section)) return json(response, 400, { error: '无效分区' });

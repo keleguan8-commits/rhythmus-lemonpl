@@ -1312,7 +1312,7 @@
         if (cloud.rhythm) { rhythm = cloud.rhythm; localStorage.setItem(RHYTHM_STORAGE_KEY, JSON.stringify(rhythm)); }
         if (cloud.lemon) { lemon = cloud.lemon; localStorage.setItem(LEMON_STORAGE_KEY, JSON.stringify(lemon)); }
         renderAll(); switchPage(lemon.activePage);
-      }
+      } else cloudSave();
     } catch { showAuthError('网络异常，请稍后再试'); }
   });
   $('logoutBtn').addEventListener('click', async () => {
