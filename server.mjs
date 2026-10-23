@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createPool } from 'mysql2/promise';
+import pg from 'pg';
 import { timingSafeEqual, randomBytes, scryptSync, randomUUID, createHash } from 'node:crypto';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -17,32 +18,46 @@ try {
     }
   }
 } catch { /* required fields are validated below */ }
-const required = ['TIDB_HOST', 'TIDB_PORT', 'TIDB_DATABASE', 'TIDB_USERNAME', 'TIDB_PASSWORD'];
+const required = process.env.DATABASE_URL ? [] : ['TIDB_HOST', 'TIDB_PORT', 'TIDB_DATABASE', 'TIDB_USERNAME', 'TIDB_PASSWORD'];
 const missing = required.filter(key => !process.env[key]);
 if (missing.length) throw new Error(`缺少数据库配置：${missing.join(', ')}`);
 if (prod && !process.env.LIBRARY_ACCESS_KEY) throw new Error('生产运行缺少 LIBRARY_ACCESS_KEY，拒绝公开资料接口');
 
-const pool = createPool({ host: process.env.TIDB_HOST, port: Number(process.env.TIDB_PORT),
-  user: process.env.TIDB_USERNAME, password: process.env.TIDB_PASSWORD,
-  database: process.env.TIDB_DATABASE, connectionLimit: 5, charset: 'utf8mb4' });
+const postgres = Boolean(process.env.DATABASE_URL);
+const rawPool = postgres
+  ? new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false } })
+  : createPool({ host: process.env.TIDB_HOST, port: Number(process.env.TIDB_PORT), user: process.env.TIDB_USERNAME,
+      password: process.env.TIDB_PASSWORD, database: process.env.TIDB_DATABASE, connectionLimit: 5, charset: 'utf8mb4' });
+function pgSql(sql) {
+  let n = 0;
+  return sql.replace(/\?/g, () => `$${++n}`).replace(/UTC_TIMESTAMP\(\)/g, 'CURRENT_TIMESTAMP')
+    .replace(/DATE_ADD\(CURRENT_TIMESTAMP, INTERVAL 30 DAY\)/g, "CURRENT_TIMESTAMP + INTERVAL '30 days'");
+}
+const pool = postgres ? {
+  async query(sql, args = []) { const r = await rawPool.query(pgSql(sql), args); return [r.rows, r.fields]; },
+  async execute(sql, args = []) { const r = await rawPool.query(pgSql(sql), args); return [r.rows.length ? r.rows : { affectedRows: r.rowCount }, r.fields]; },
+} : rawPool;
 await pool.query('SELECT 1');
 await pool.query(`CREATE TABLE IF NOT EXISTS workbench_users (
   id CHAR(36) NOT NULL PRIMARY KEY,
   email VARCHAR(320) NOT NULL UNIQUE,
-  password_hash VARBINARY(128) NOT NULL,
-  password_salt VARBINARY(32) NOT NULL,
+  password_hash ${postgres ? 'BYTEA' : 'VARBINARY(128)'} NOT NULL,
+  password_salt ${postgres ? 'BYTEA' : 'VARBINARY(32)'} NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
 await pool.query(`CREATE TABLE IF NOT EXISTS workbench_sessions (
   token_hash CHAR(64) NOT NULL PRIMARY KEY,
   user_id CHAR(36) NOT NULL,
-  expires_at DATETIME NOT NULL,
-  INDEX (user_id), INDEX (expires_at)
+  expires_at ${postgres ? 'TIMESTAMP' : 'DATETIME'} NOT NULL
 )`);
+if (postgres) {
+  await pool.query('CREATE INDEX IF NOT EXISTS workbench_sessions_user_id ON workbench_sessions (user_id)');
+  await pool.query('CREATE INDEX IF NOT EXISTS workbench_sessions_expires_at ON workbench_sessions (expires_at)');
+}
 await pool.query(`CREATE TABLE IF NOT EXISTS workbench_data (
   user_id CHAR(36) NOT NULL PRIMARY KEY,
-  data_json MEDIUMTEXT NOT NULL,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  data_json ${postgres ? 'TEXT' : 'MEDIUMTEXT'} NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP${postgres ? '' : ' ON UPDATE CURRENT_TIMESTAMP'}
 )`);
 await pool.query(`CREATE TABLE IF NOT EXISTS library_materials (
   id CHAR(36) NOT NULL PRIMARY KEY,
@@ -51,13 +66,15 @@ await pool.query(`CREATE TABLE IF NOT EXISTS library_materials (
   section VARCHAR(20) NOT NULL DEFAULT 'study',
   source_url VARCHAR(2000) NOT NULL DEFAULT '',
   tags VARCHAR(240) NOT NULL DEFAULT '',
-  body MEDIUMTEXT NOT NULL,
-  highlights MEDIUMTEXT NOT NULL,
+  body ${postgres ? 'TEXT' : 'MEDIUMTEXT'} NOT NULL,
+  highlights ${postgres ? 'TEXT' : 'MEDIUMTEXT'} NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP${postgres ? '' : ' ON UPDATE CURRENT_TIMESTAMP'}
 )`);
-const [sectionColumns] = await pool.query("SHOW COLUMNS FROM library_materials LIKE 'section'");
-if (!sectionColumns.length) await pool.query("ALTER TABLE library_materials ADD COLUMN section VARCHAR(20) NOT NULL DEFAULT 'study'");
+if (!postgres) {
+  const [sectionColumns] = await pool.query("SHOW COLUMNS FROM library_materials LIKE 'section'");
+  if (!sectionColumns.length) await pool.query("ALTER TABLE library_materials ADD COLUMN section VARCHAR(20) NOT NULL DEFAULT 'study'");
+}
 console.log('资料库数据库连接正常');
 
 function json(response, code, value) {
@@ -152,7 +169,8 @@ const server = http.createServer(async (request, response) => {
       const data = authInput(await jsonInput(request));
       const [[user]] = await pool.execute('SELECT * FROM workbench_users WHERE email=?', [data.email]);
       if (!user) return json(response, 401, { error: '邮箱或密码错误' });
-      const actual = scryptSync(data.password, user.password_salt, 64);
+      const salt = Buffer.isBuffer(user.password_salt) ? user.password_salt : Buffer.from(user.password_salt);
+      const actual = scryptSync(data.password, salt, 64);
       if (!timingSafeEqual(actual, Buffer.from(user.password_hash))) return json(response, 401, { error: '邮箱或密码错误' });
       const token = randomBytes(32).toString('hex');
       await pool.execute('INSERT INTO workbench_sessions (token_hash,user_id,expires_at) VALUES (?,?,DATE_ADD(UTC_TIMESTAMP(), INTERVAL 30 DAY))', [requireHash(token), user.id]);
@@ -171,13 +189,17 @@ const server = http.createServer(async (request, response) => {
       if (!user) return json(response, 401, { error: '请先登录' });
       if (request.method === 'GET') {
         const [[row]] = await pool.execute('SELECT data_json FROM workbench_data WHERE user_id=?', [user.id]);
-        return json(response, 200, { data: row ? JSON.parse(row.data_json) : null });
+        const stored = row?.data_json;
+        return json(response, 200, { data: stored ? (typeof stored === 'string' ? JSON.parse(stored) : stored) : null });
       }
       const raw = await jsonInput(request);
       if (!raw || typeof raw.data !== 'object' || raw.data === null) return json(response, 400, { error: '数据格式错误' });
       const text = JSON.stringify(raw.data);
       if (text.length > 5_000_000) return json(response, 413, { error: '工作台数据过大' });
-      await pool.execute(`INSERT INTO workbench_data (user_id,data_json) VALUES (?,?) ON DUPLICATE KEY UPDATE data_json=VALUES(data_json)`, [user.id, text]);
+      const upsert = postgres
+        ? 'INSERT INTO workbench_data (user_id,data_json,updated_at) VALUES (?,?,CURRENT_TIMESTAMP) ON CONFLICT (user_id) DO UPDATE SET data_json=EXCLUDED.data_json,updated_at=CURRENT_TIMESTAMP'
+        : 'INSERT INTO workbench_data (user_id,data_json) VALUES (?,?) ON DUPLICATE KEY UPDATE data_json=VALUES(data_json)';
+      await pool.execute(upsert, [user.id, text]);
       return json(response, 200, { ok: true });
     }
     if (route.startsWith('/api/library')) {
