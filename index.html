@@ -166,12 +166,11 @@
 
   <main class="library-page" id="libraryPage" hidden>
     <aside class="library-side">
-      <div class="library-side-heading"><span class="library-monogram">资</span><div><p class="eyebrow">PERSONAL LIBRARY</p><h2>资料库</h2></div></div>
-      <p class="library-subtitle">让学习、灵感与方法各归其位。</p>
+      <div class="library-side-heading"><span class="library-monogram">资</span><div><h2>资料库</h2></div></div>
       <div class="library-sections" id="librarySections" role="tablist" aria-label="知识空间分页">
-        <button type="button" role="tab" aria-selected="true" class="active" data-section="study">学习库 <small>资料与要点</small></button>
-        <button type="button" role="tab" aria-selected="false" data-section="ideas">闪念库 <small>捕捉灵感</small></button>
-        <button type="button" role="tab" aria-selected="false" data-section="methods">做事方法库 <small>沉淀可复用的方法</small></button>
+        <button type="button" role="tab" aria-selected="true" class="active" data-section="study">学习库</button>
+        <button type="button" role="tab" aria-selected="false" data-section="ideas">闪念库</button>
+        <button type="button" role="tab" aria-selected="false" data-section="methods">做事方法库</button>
       </div>
       <button class="library-create" type="button" id="libraryCreate">＋ 收录资料</button>
       <label class="library-search-label" for="librarySearch">检索资料</label>
@@ -188,9 +187,9 @@
       <div class="library-pagination"><button type="button" id="libraryPrev" aria-label="上一页">‹</button><span id="libraryPageLabel">1 / 1</span><button type="button" id="libraryNext" aria-label="下一页">›</button></div>
     </aside>
     <section class="library-main">
-      <div class="library-hero"><div><p class="eyebrow" id="libraryHeroEyebrow">LEARNING LIBRARY</p><h2 id="libraryHeroTitle">从资料，到自己的理解。</h2><p id="libraryHeroText">收录原文 · 提炼重点 · 定期回看</p></div><span class="library-hero-symbol" aria-hidden="true">✳</span></div>
+      <div class="library-hero"><div><h2 id="libraryHeroTitle">学习库</h2></div></div>
       <div class="library-notice" id="libraryNotice" role="status" hidden></div>
-      <div class="library-blank" id="libraryBlank"><span aria-hidden="true">◇</span><h3 id="libraryBlankTitle">从一篇值得记住的资料开始</h3><p id="libraryBlankText">选择左侧的资料，或者新建一份资料。</p></div>
+      <div class="library-blank" id="libraryBlank"><span aria-hidden="true">＋</span><h3 id="libraryBlankTitle">选择一条笔记</h3></div>
       <form id="libraryForm" class="library-form" hidden>
         <div class="library-form-header"><div><p class="eyebrow" id="libraryFormEyebrow">NEW MATERIAL</p><h3 id="libraryFormHeading">新资料</h3></div><div class="library-actions"><button type="button" id="libraryDelete" class="library-delete" hidden>删除</button><button type="submit" class="library-save">保存资料</button></div></div>
         <div class="library-fields">
@@ -199,7 +198,8 @@
           <label id="libraryUrlField">来源链接 <input id="libraryUrl" type="url" maxlength="2000" placeholder="https://…（选填）"></label>
           <label>标签 <input id="libraryTags" maxlength="240" placeholder="用逗号分隔，如：专利法, 实务"></label>
         </div>
-        <div class="library-writing"><label><span class="library-body-label">资料正文 / 摘录</span> <span id="libraryBodyHint">保留重要原文，方便核对</span><textarea id="libraryBody" rows="12" placeholder="粘贴文章、书摘或课程文字；此版本暂不上传文件。"></textarea></label><label><span class="library-points-label">我的学习要点</span> <span id="libraryPointsHint">总结、疑问、实践线索</span><textarea id="libraryHighlights" rows="12" placeholder="写下关键概念、结论和想继续追问的问题…"></textarea></label></div>
+        <div class="library-writing"><label><span class="library-body-label">正文</span><textarea id="libraryBody" rows="12" placeholder="输入文字…"></textarea></label><label><span class="library-points-label">备注</span><textarea id="libraryHighlights" rows="12" placeholder="补充要点…"></textarea></label></div>
+        <div class="library-attachment"><label for="libraryFile">附件</label><input id="libraryFile" type="file" accept=".pdf,.doc,.docx,.txt,.md,.png,.jpg,.jpeg,.webp"><span id="libraryAttachmentName">未选择文件</span><button type="button" id="libraryDownload" hidden>下载附件</button></div>
         <div class="library-ai" id="libraryAi"><div><strong>✳ 辅助提炼</strong><p>可复制提炼指令，交给你使用的 AI 助手；生成结果核对后粘贴到学习要点。自动提炼需另外配置服务端 AI 接口。</p></div><button type="button" id="libraryCopyPrompt">复制提炼指令</button></div>
         <p class="library-updated" id="libraryUpdated"></p>
       </form>

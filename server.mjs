@@ -74,6 +74,28 @@ await pool.query(`CREATE TABLE IF NOT EXISTS library_materials (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP${postgres ? '' : ' ON UPDATE CURRENT_TIMESTAMP'}
 )`);
+if (postgres) {
+  await pool.query(`CREATE TABLE IF NOT EXISTS library_files (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    material_id CHAR(36) NOT NULL UNIQUE,
+    file_name TEXT NOT NULL,
+    file_type VARCHAR(160) NOT NULL,
+    file_data ${postgres ? 'BYTEA' : 'LONGBLOB'} NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (material_id) REFERENCES library_materials(id) ON DELETE CASCADE
+  )`);
+} else {
+  const [fileTable] = await pool.query("SHOW TABLES LIKE 'library_files'");
+  if (!fileTable.length) await pool.query(`CREATE TABLE library_files (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    material_id CHAR(36) NOT NULL UNIQUE,
+    file_name VARCHAR(320) NOT NULL,
+    file_type VARCHAR(160) NOT NULL,
+    file_data LONGBLOB NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (material_id) REFERENCES library_materials(id) ON DELETE CASCADE
+  )`);
+}
 if (!postgres) {
   const [sectionColumns] = await pool.query("SHOW COLUMNS FROM library_materials LIKE 'section'");
   if (!sectionColumns.length) await pool.query("ALTER TABLE library_materials ADD COLUMN section VARCHAR(20) NOT NULL DEFAULT 'study'");
@@ -150,7 +172,7 @@ function authorized(request) {
   const a = Buffer.from(supplied), b = Buffer.from(process.env.LIBRARY_ACCESS_KEY);
   return a.length === b.length && timingSafeEqual(a, b);
 }
-const columns = 'id,title,kind,section,source_url,tags,body,highlights,created_at,updated_at';
+const columns = 'id,title,kind,section,source_url,tags,body,highlights,created_at,updated_at,(SELECT file_name FROM library_files WHERE material_id=library_materials.id) AS file_name,(SELECT material_id FROM library_files WHERE material_id=library_materials.id) AS file_id';
 const files = { '/': ['index.html', 'text/html'], '/index.html': ['index.html', 'text/html'],
   '/style.css': ['style.css', 'text/css'], '/app.js': ['app.js', 'text/javascript'],
   '/library.js': ['library.js', 'text/javascript'] };
@@ -244,8 +266,8 @@ const server = http.createServer(async (request, response) => {
         const saved = (Array.isArray(savedRows) ? savedRows : savedRows?.rows || [])[0];
         return json(response, 201, { item: saved });
       }
-      const match = route.match(/^\/api\/library\/([\da-f-]{36})$/i);
-      if (match && request.method === 'GET') {
+      const match = route.match(/^\/api\/library\/([\da-f-]{36})(\/file)?$/i);
+      if (match && request.method === 'GET' && !match[2]) {
         const [itemRows] = await pool.execute(`SELECT ${columns} FROM library_materials WHERE id=?`, [match[1]]);
         const item = (Array.isArray(itemRows) ? itemRows : itemRows?.rows || [])[0];
         return json(response, item ? 200 : 404, item ? { item } : { error: '资料不存在' });
@@ -262,6 +284,25 @@ const server = http.createServer(async (request, response) => {
       if (match && request.method === 'DELETE') {
         const [result] = await pool.execute('DELETE FROM library_materials WHERE id=?', [match[1]]);
         return json(response, result.affectedRows ? 200 : 404, result.affectedRows ? { ok: true } : { error: '资料不存在' });
+      }
+      if (match && request.method === 'POST' && match[2]) {
+        const chunks = []; let size = 0;
+        for await (const chunk of request) { chunks.push(chunk); size += chunk.length; if (size > 20_000_000) return json(response, 413, { error: '附件超过 20MB 限制' }); }
+        const buffer = Buffer.concat(chunks);
+        const fileName = request.headers['x-file-name'] ? Buffer.from(request.headers['x-file-name'], 'base64').toString('utf8') : `attachment-${Date.now()}`;
+        if (postgres) {
+          await pool.execute('INSERT INTO library_files (id,material_id,file_name,file_type,file_data) VALUES (?,?,?,?,?) ON CONFLICT (material_id) DO UPDATE SET file_name=EXCLUDED.file_name,file_type=EXCLUDED.file_type,file_data=EXCLUDED.file_data', [randomUUID(), match[1], fileName, request.headers['content-type'] || 'application/octet-stream', buffer]);
+        } else {
+          await pool.execute('INSERT INTO library_files (id,material_id,file_name,file_type,file_data) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE file_name=VALUES(file_name),file_type=VALUES(file_type),file_data=VALUES(file_data)', [randomUUID(), match[1], fileName, request.headers['content-type'] || 'application/octet-stream', buffer]);
+        }
+        return json(response, 201, { ok: true });
+      }
+      if (match && request.method === 'GET') {
+        const [fileRows] = await pool.execute('SELECT file_name,file_type,file_data FROM library_files WHERE material_id=?', [match[1]]);
+        const file = (Array.isArray(fileRows) ? fileRows : fileRows?.rows || [])[0];
+        if (!file) return json(response, 404, { error: '附件不存在' });
+        response.writeHead(200, { 'Content-Type': file.file_type, 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.file_name)}` });
+        return response.end(Buffer.isBuffer(file.file_data) ? file.file_data : Buffer.from(file.file_data));
       }
       return json(response, 404, { error: '接口不存在' });
     }
