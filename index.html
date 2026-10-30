@@ -198,13 +198,15 @@
           <label id="libraryUrlField">来源链接 <input id="libraryUrl" type="url" maxlength="2000" placeholder="https://…（选填）"></label>
           <label>标签 <input id="libraryTags" maxlength="240" placeholder="用逗号分隔，如：专利法, 实务"></label>
         </div>
-        <div class="library-writing"><label><span class="library-body-label">正文</span><textarea id="libraryBody" rows="12" placeholder="输入文字…"></textarea></label><label><span class="library-points-label">备注</span><textarea id="libraryHighlights" rows="12" placeholder="补充要点…"></textarea></label></div>
+        <div class="library-writing"><label><span class="library-body-label">正文</span><div class="library-editor-toolbar" role="toolbar"><button type="button" data-block="p">正文</button><button type="button" data-block="h2">标题</button><button type="button" data-block="blockquote">引用</button><button type="button" data-block="ul">列表</button><button type="button" data-block="ol">编号</button><button type="button" data-block="pre">代码</button><button type="button" id="libraryInsertTable">表格</button><button type="button" id="libraryInsertTodo">待办</button></div><div id="libraryBlockEditor" class="library-block-editor" contenteditable="true" data-placeholder="输入文字…"></div><textarea id="libraryBody" rows="12" placeholder="输入文字…" hidden></textarea></label><label><span class="library-points-label">备注</span><textarea id="libraryHighlights" rows="12" placeholder="补充要点…"></textarea></label></div>
         <div class="library-attachment"><label for="libraryFile">附件</label><input id="libraryFile" type="file" accept=".pdf,.doc,.docx,.txt,.md,.png,.jpg,.jpeg,.webp"><span id="libraryAttachmentName">未选择文件</span><button type="button" id="libraryDownload" hidden>下载附件</button></div>
+        <div class="library-preview" id="libraryPreview" hidden><div class="library-preview-head"><strong>预览与标记</strong><button type="button" id="libraryExpandPreview">展开画布</button></div><div class="library-preview-body"><iframe id="libraryPreviewFrame" title="附件预览" hidden></iframe><img id="libraryPreviewImage" alt="附件预览" hidden><p id="libraryPreviewEmpty">保存附件后可在这里预览。</p></div></div>
         <div class="library-ai" id="libraryAi"><div><strong>✳ 辅助提炼</strong><p>可复制提炼指令，交给你使用的 AI 助手；生成结果核对后粘贴到学习要点。自动提炼需另外配置服务端 AI 接口。</p></div><button type="button" id="libraryCopyPrompt">复制提炼指令</button></div>
         <p class="library-updated" id="libraryUpdated"></p>
       </form>
     </section>
   </main>
+  <div class="library-canvas-modal" id="libraryCanvasModal" hidden><div class="library-canvas-dialog"><div class="library-canvas-head"><strong>资料画布</strong><div class="library-pen-tools"><button type="button" data-pen="#f03e3e">红</button><button type="button" data-pen="#f59f00">橙</button><button type="button" data-pen="#12b886">绿</button><button type="button" data-pen="#4f6ef2">蓝</button><button type="button" data-pen="#1f2430">黑</button><label>粗细 <input id="libraryPenSize" type="range" min="2" max="18" value="5"></label><button type="button" id="libraryCanvasClear">清除标记</button><button type="button" id="libraryCanvasClose">关闭</button></div></div><div class="library-canvas-stage"><iframe id="libraryCanvasFrame" title="展开预览"></iframe><canvas id="libraryCanvas"></canvas></div></div></div>
 
   <!-- LemonPL：按日期组织的列表看板 -->
   <main class="lemon-page" id="lemonPage" hidden>

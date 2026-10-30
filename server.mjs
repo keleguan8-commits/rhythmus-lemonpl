@@ -75,6 +75,15 @@ await pool.query(`CREATE TABLE IF NOT EXISTS library_materials (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP${postgres ? '' : ' ON UPDATE CURRENT_TIMESTAMP'}
 )`);
 if (postgres) {
+  await pool.query("ALTER TABLE library_materials ADD COLUMN IF NOT EXISTS blocks_json TEXT NOT NULL DEFAULT ''");
+  await pool.query("ALTER TABLE library_materials ADD COLUMN IF NOT EXISTS annotations_json TEXT NOT NULL DEFAULT ''");
+} else {
+  const [blockCols] = await pool.query("SHOW COLUMNS FROM library_materials LIKE 'blocks_json'");
+  if (!blockCols.length) await pool.query("ALTER TABLE library_materials ADD COLUMN blocks_json MEDIUMTEXT NOT NULL");
+  const [annotationCols] = await pool.query("SHOW COLUMNS FROM library_materials LIKE 'annotations_json'");
+  if (!annotationCols.length) await pool.query("ALTER TABLE library_materials ADD COLUMN annotations_json MEDIUMTEXT NOT NULL");
+}
+if (postgres) {
   await pool.query(`CREATE TABLE IF NOT EXISTS library_files (
     id CHAR(36) NOT NULL PRIMARY KEY,
     material_id CHAR(36) NOT NULL UNIQUE,
@@ -96,6 +105,13 @@ if (postgres) {
     FOREIGN KEY (material_id) REFERENCES library_materials(id) ON DELETE CASCADE
   )`);
 }
+await pool.query(`CREATE TABLE IF NOT EXISTS library_notes (
+  material_id CHAR(36) NOT NULL PRIMARY KEY,
+  blocks_json ${postgres ? 'TEXT' : 'MEDIUMTEXT'} NOT NULL DEFAULT '',
+  annotations_json ${postgres ? 'TEXT' : 'MEDIUMTEXT'} NOT NULL DEFAULT '',
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (material_id) REFERENCES library_materials(id) ON DELETE CASCADE
+)`);
 if (!postgres) {
   const [sectionColumns] = await pool.query("SHOW COLUMNS FROM library_materials LIKE 'section'");
   if (!sectionColumns.length) await pool.query("ALTER TABLE library_materials ADD COLUMN section VARCHAR(20) NOT NULL DEFAULT 'study'");
@@ -172,7 +188,7 @@ function authorized(request) {
   const a = Buffer.from(supplied), b = Buffer.from(process.env.LIBRARY_ACCESS_KEY);
   return a.length === b.length && timingSafeEqual(a, b);
 }
-const columns = 'id,title,kind,section,source_url,tags,body,highlights,created_at,updated_at,(SELECT file_name FROM library_files WHERE material_id=library_materials.id) AS file_name,(SELECT material_id FROM library_files WHERE material_id=library_materials.id) AS file_id';
+const columns = 'id,title,kind,section,source_url,tags,body,highlights,blocks_json,annotations_json,created_at,updated_at,(SELECT file_name FROM library_files WHERE material_id=library_materials.id) AS file_name,(SELECT material_id FROM library_files WHERE material_id=library_materials.id) AS file_id';
 const files = { '/': ['index.html', 'text/html'], '/index.html': ['index.html', 'text/html'],
   '/style.css': ['style.css', 'text/css'], '/app.js': ['app.js', 'text/javascript'],
   '/library.js': ['library.js', 'text/javascript'] };
@@ -266,11 +282,23 @@ const server = http.createServer(async (request, response) => {
         const saved = (Array.isArray(savedRows) ? savedRows : savedRows?.rows || [])[0];
         return json(response, 201, { item: saved });
       }
-      const match = route.match(/^\/api\/library\/([\da-f-]{36})(\/file)?$/i);
+      const match = route.match(/^\/api\/library\/([\da-f-]{36})(\/(?:file|notes))?$/i);
       if (match && request.method === 'GET' && !match[2]) {
         const [itemRows] = await pool.execute(`SELECT ${columns} FROM library_materials WHERE id=?`, [match[1]]);
         const item = (Array.isArray(itemRows) ? itemRows : itemRows?.rows || [])[0];
         return json(response, item ? 200 : 404, item ? { item } : { error: '资料不存在' });
+      }
+      if (match && match[2] === '/notes' && request.method === 'GET') {
+        const [rows] = await pool.execute('SELECT blocks_json,annotations_json FROM library_notes WHERE material_id=?', [match[1]]);
+        const note = (Array.isArray(rows) ? rows : rows?.rows || [])[0] || { blocks_json: '', annotations_json: '' };
+        return json(response, 200, { note });
+      }
+      if (match && match[2] === '/notes' && request.method === 'PUT') {
+        const note = await jsonInput(request); const blocks = String(note.blocks_json || '').slice(0, 2_000_000); const annotations = String(note.annotations_json || '').slice(0, 2_000_000);
+        const sql = postgres
+          ? 'INSERT INTO library_notes (material_id,blocks_json,annotations_json,updated_at) VALUES (?,?,?,CURRENT_TIMESTAMP) ON CONFLICT (material_id) DO UPDATE SET blocks_json=EXCLUDED.blocks_json,annotations_json=EXCLUDED.annotations_json,updated_at=CURRENT_TIMESTAMP'
+          : 'INSERT INTO library_notes (material_id,blocks_json,annotations_json) VALUES (?,?,?) ON DUPLICATE KEY UPDATE blocks_json=VALUES(blocks_json),annotations_json=VALUES(annotations_json)';
+        await pool.execute(sql, [match[1], blocks, annotations]); return json(response, 200, { ok: true });
       }
       if (match && request.method === 'PUT') {
         const item = await input(request);

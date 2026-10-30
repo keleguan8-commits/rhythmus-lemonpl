@@ -6,6 +6,7 @@
   const heroNames = { study: '学习库', ideas: '闪念库', methods: '做事方法库' };
   let entries = [], selectedId = null, section = 'study', filter = 'all', query = '', loaded = false, page = 1, total = 0, generation = 0;
   let pendingFile = null;
+  let noteBlocks = '', noteAnnotations = [], penColor = '#f03e3e', drawing = false;
   const sections = {
     study: { title: '学习库' },
     ideas: { title: '闪念库' },
@@ -64,7 +65,28 @@
     $('libraryAttachmentName').dataset.existing = entry?.file_name || '';
     $('libraryAttachmentName').textContent = entry?.file_name || '未选择文件';
     $('libraryDownload').hidden = !entry?.file_id;
+    $('libraryPreview').hidden = !entry?.file_id;
+    if (entry?.file_id) {
+      const url = `/api/library/${entry.id}/file`, type = (entry.file_name || '').toLowerCase();
+      const image = /\.(png|jpe?g|webp|gif)$/.test(type);
+      $('libraryPreviewFrame').hidden = image; $('libraryPreviewImage').hidden = !image; $('libraryPreviewEmpty').hidden = true;
+      if (image) $('libraryPreviewImage').src = url; else $('libraryPreviewFrame').src = url;
+      $('libraryCanvasFrame').src = url;
+    } else { $('libraryPreviewFrame').removeAttribute('src'); $('libraryPreviewImage').removeAttribute('src'); $('libraryPreviewEmpty').hidden = false; }
+    loadNotes(entry?.id);
     renderList();
+  }
+  async function loadNotes(id) {
+    noteBlocks = ''; noteAnnotations = [];
+    const editor = $('libraryBlockEditor'); if (!editor) return;
+    if (!id) { editor.innerHTML = ''; return; }
+    try { const data = await request('/' + id + '/notes'); noteBlocks = data.note?.blocks_json || ''; noteAnnotations = JSON.parse(data.note?.annotations_json || '[]'); editor.innerHTML = noteBlocks || escapeHtml($('libraryBody').value || ''); restoreCanvas(); }
+    catch { editor.innerHTML = escapeHtml($('libraryBody').value || ''); }
+  }
+  function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML.replace(/\n/g, '<br>'); }
+  async function saveNotes() {
+    if (!selectedId) return; noteBlocks = $('libraryBlockEditor').innerHTML; $('libraryBody').value = $('libraryBlockEditor').innerText;
+    await request('/' + selectedId + '/notes', { method: 'PUT', body: JSON.stringify({ blocks_json: noteBlocks, annotations_json: JSON.stringify(noteAnnotations) }) });
   }
   function switchSection(next) {
     if (!sections[next]) return;
@@ -116,12 +138,12 @@
     event.preventDefault();
     const payload = { title: $('libraryTitle').value.trim(), kind: section === 'study' ? $('libraryKind').value : 'note', section,
       source_url: $('libraryUrl').value.trim(), tags: $('libraryTags').value.trim(),
-      body: $('libraryBody').value, highlights: $('libraryHighlights').value };
+      body: $('libraryBlockEditor').innerText, highlights: $('libraryHighlights').value };
     if (!payload.title) return;
     const save = $('libraryForm').querySelector('[type="submit"]'); save.disabled = true;
     try {
       const data = await request(selectedId ? '/' + selectedId : '', { method: selectedId ? 'PUT' : 'POST', body: JSON.stringify(payload) });
-      selectedId = data.item.id; await uploadAttachment(data.item.id); show(data.item); await reload(); notice('已保存。');
+      selectedId = data.item.id; await uploadAttachment(data.item.id); await saveNotes(); show(data.item); await reload(); notice('已保存。');
     } catch (error) { notice(error.message, true); } finally { save.disabled = false; }
   });
   $('libraryDelete').addEventListener('click', async () => {
@@ -145,4 +167,20 @@
     } });
     if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || '附件保存失败'); }
   }
+  $('libraryBlockEditor').addEventListener('input', () => { $('libraryBody').value = $('libraryBlockEditor').innerText; });
+  document.querySelector('.library-editor-toolbar')?.addEventListener('click', event => { const button = event.target.closest('[data-block]'); if (!button) return; document.execCommand('formatBlock', false, button.dataset.block === 'p' ? 'P' : button.dataset.block === 'h2' ? 'H2' : button.dataset.block === 'blockquote' ? 'BLOCKQUOTE' : button.dataset.block === 'pre' ? 'PRE' : button.dataset.block === 'ul' ? 'UL' : 'OL'); $('libraryBlockEditor').focus(); });
+  $('libraryInsertTable')?.addEventListener('click', () => { document.execCommand('insertHTML', false, '<table><tbody><tr><td>单元格</td><td>单元格</td></tr><tr><td>单元格</td><td>单元格</td></tr></tbody></table><p><br></p>'); });
+  $('libraryInsertTodo')?.addEventListener('click', () => { document.execCommand('insertHTML', false, '<p>☐ 待办事项</p>'); });
+  $('libraryExpandPreview')?.addEventListener('click', () => { if (!selectedId) return; $('libraryCanvasModal').hidden = false; resizeCanvas(); restoreCanvas(); });
+  $('libraryCanvasClose')?.addEventListener('click', () => { $('libraryCanvasModal').hidden = true; });
+  document.querySelectorAll('[data-pen]').forEach(button => button.addEventListener('click', () => { penColor = button.dataset.pen; }));
+  const canvas = $('libraryCanvas'), ctx = canvas?.getContext('2d');
+  function resizeCanvas() { if (!canvas) return; const box = canvas.getBoundingClientRect(); canvas.width = box.width * devicePixelRatio; canvas.height = box.height * devicePixelRatio; ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0); }
+  function point(event) { const box = canvas.getBoundingClientRect(); return { x: event.clientX - box.left, y: event.clientY - box.top }; }
+  function restoreCanvas() { if (!canvas || !ctx) return; ctx.clearRect(0, 0, canvas.width, canvas.height); for (const stroke of noteAnnotations) { ctx.beginPath(); ctx.strokeStyle = stroke.color; ctx.lineWidth = stroke.size; ctx.lineCap = 'round'; stroke.points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke(); } }
+  canvas?.addEventListener('pointerdown', event => { drawing = true; const p = point(event); noteAnnotations.push({ color: penColor, size: Number($('libraryPenSize').value), points: [p] }); canvas.setPointerCapture(event.pointerId); });
+  canvas?.addEventListener('pointermove', event => { if (!drawing) return; const stroke = noteAnnotations.at(-1), p = point(event); stroke.points.push(p); restoreCanvas(); });
+  canvas?.addEventListener('pointerup', async () => { if (!drawing) return; drawing = false; try { await saveNotes(); } catch { notice('标记已保留在当前页面，网络恢复后可再次保存。', true); } });
+  $('libraryCanvasClear')?.addEventListener('click', async () => { noteAnnotations = []; restoreCanvas(); try { await saveNotes(); } catch {} });
+  window.addEventListener('resize', () => { if (!$('libraryCanvasModal').hidden) { resizeCanvas(); restoreCanvas(); } });
 })();
