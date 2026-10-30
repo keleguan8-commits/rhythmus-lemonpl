@@ -143,6 +143,11 @@ body {
 .library-ai strong { color: var(--accent); font-size: 13px; }.library-ai p { color: var(--text-soft); font-size: 12px; line-height: 1.6; margin-top: 5px; }
 #libraryCopyPrompt:hover { color: var(--accent); border-color: var(--accent); }
 .library-updated { color: var(--text-faint); font-size: 11px; padding: 18px 0 0; }
+.library-canvas-file { flex:1; min-height:0; background:#eef0f4; padding:14px; overflow:auto; display:flex; flex-direction:column; align-items:center; }
+.library-canvas-file iframe { width:100%; flex:1; min-height:0; border:0; background:#fff; }
+.library-canvas-file img { max-width:100%; height:auto; object-fit:contain; }
+.library-canvas-file pre { width:100%; flex:1; overflow:auto; padding:24px; white-space:pre-wrap; overflow-wrap:anywhere; background:#fff; color:var(--text); }
+.library-canvas-file p { padding:24px; line-height:1.7; }
 .library-page button, .library-page input, .library-page textarea, .library-page select { transition: border-color .18s, background-color .18s, color .18s, box-shadow .18s; }
 .library-page button:not(:disabled):active { transform: translateY(1px); }
 .library-page button:focus-visible, .library-page input:focus-visible, .library-page textarea:focus-visible, .library-page select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

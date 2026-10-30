@@ -65,13 +65,14 @@
     $('libraryAttachmentName').dataset.existing = entry?.file_name || '';
     $('libraryAttachmentName').textContent = entry?.file_name || '未选择文件';
     $('libraryDownload').hidden = !entry?.file_id;
+    $('libraryCanvasDownload').hidden = !entry?.file_id;
     $('libraryPreview').hidden = !entry?.file_id;
     if (entry?.file_id) {
       const url = `/api/library/${entry.id}/file`, type = (entry.file_name || '').toLowerCase();
-      const image = /\.(png|jpe?g|webp|gif)$/.test(type);
-      $('libraryPreviewFrame').hidden = image; $('libraryPreviewImage').hidden = !image; $('libraryPreviewEmpty').hidden = true;
-      if (image) $('libraryPreviewImage').src = url; else $('libraryPreviewFrame').src = url;
-      $('libraryCanvasFrame').src = url;
+      const image = /\.(png|jpe?g|webp)$/.test(type), supported = /\.(pdf|png|jpe?g|webp|txt|md)$/.test(type);
+      $('libraryPreviewFrame').hidden = image || !supported; $('libraryPreviewImage').hidden = !image; $('libraryPreviewEmpty').hidden = supported;
+      $('libraryPreviewEmpty').textContent = '此格式暂不支持站内预览，可下载原文件。';
+      if (image) $('libraryPreviewImage').src = url; else if (supported) $('libraryPreviewFrame').src = url;
     } else { $('libraryPreviewFrame').removeAttribute('src'); $('libraryPreviewImage').removeAttribute('src'); $('libraryPreviewEmpty').hidden = false; }
     loadNotes(entry?.id);
     renderList();
@@ -123,7 +124,26 @@
     pendingFile = event.target.files?.[0] || null;
     $('libraryAttachmentName').textContent = pendingFile ? pendingFile.name : $('libraryAttachmentName').dataset.existing || '未选择文件';
   });
-  $('libraryDownload').addEventListener('click', () => { if (selectedId) window.open(`/api/library/${selectedId}/file`, '_blank'); });
+  function openFileModal() {
+    if (!selectedId) return;
+    const name = ($('libraryAttachmentName').textContent || '').toLowerCase();
+    const url = `/api/library/${selectedId}/file`;
+    const image = /\.(png|jpe?g|webp)$/.test(name);
+    const text = /\.(txt|md)$/.test(name);
+    const supported = /\.(pdf|png|jpe?g|webp|txt|md)$/.test(name);
+    $('libraryCanvasTitle').textContent = $('libraryAttachmentName').textContent || '资料展开';
+    $('libraryCanvasFileFrame').hidden = image || text || !supported; $('libraryCanvasFileImage').hidden = !image; $('libraryCanvasFileText').hidden = !text; $('libraryFileStatus').hidden = supported;
+    $('libraryFileStatus').textContent = '此格式暂不支持站内预览，请下载原文件。PDF、图片、TXT 和 Markdown 可直接展开。';
+    if (image) $('libraryCanvasFileImage').src = url; else if (text) {
+      const id = selectedId; $('libraryCanvasFileText').textContent = '正在加载…';
+      fetch(url).then(async r => { if (!r.ok) throw new Error('读取附件失败'); return r.text(); }).then(value => { if (selectedId === id) $('libraryCanvasFileText').textContent = value; }).catch(error => { if (selectedId === id) $('libraryCanvasFileText').textContent = error.message; });
+    } else if (supported) $('libraryCanvasFileFrame').src = url;
+    $('libraryFileModal').hidden = false;
+  }
+  $('libraryDownload').addEventListener('click', () => { if (selectedId) window.open(`/api/library/${selectedId}/file?download=1`, '_blank'); });
+  $('libraryCanvasDownload').addEventListener('click', () => { if (selectedId) window.open(`/api/library/${selectedId}/file?download=1`, '_blank'); });
+  $('libraryExpandPreview').addEventListener('click', openFileModal);
+  $('libraryFileClose').addEventListener('click', () => { $('libraryFileModal').hidden = true; });
   let searchTimer;
   $('librarySearch').addEventListener('input', event => { query = event.target.value.trim(); page = 1; clearTimeout(searchTimer); searchTimer = setTimeout(reload, 250); });
   $('libraryPrev').addEventListener('click', () => { page--; reload(); });
@@ -171,7 +191,9 @@
   document.querySelector('.library-editor-toolbar')?.addEventListener('click', event => { const button = event.target.closest('[data-block]'); if (!button) return; document.execCommand('formatBlock', false, button.dataset.block === 'p' ? 'P' : button.dataset.block === 'h2' ? 'H2' : button.dataset.block === 'blockquote' ? 'BLOCKQUOTE' : button.dataset.block === 'pre' ? 'PRE' : button.dataset.block === 'ul' ? 'UL' : 'OL'); $('libraryBlockEditor').focus(); });
   $('libraryInsertTable')?.addEventListener('click', () => { document.execCommand('insertHTML', false, '<table><tbody><tr><td>单元格</td><td>单元格</td></tr><tr><td>单元格</td><td>单元格</td></tr></tbody></table><p><br></p>'); });
   $('libraryInsertTodo')?.addEventListener('click', () => { document.execCommand('insertHTML', false, '<p>☐ 待办事项</p>'); });
-  $('libraryExpandPreview')?.addEventListener('click', () => { if (!selectedId) return; $('libraryCanvasEditor').innerHTML = $('libraryBlockEditor').innerHTML; $('libraryCanvasModal').hidden = false; $('libraryCanvasEditor').focus(); });
+  const expandText = document.createElement('button'); expandText.type = 'button'; expandText.textContent = '展开正文';
+  document.querySelector('.library-editor-toolbar').appendChild(expandText);
+  expandText.addEventListener('click', () => { if (!selectedId) return; $('libraryCanvasEditor').innerHTML = $('libraryBlockEditor').innerHTML; $('libraryCanvasModal').hidden = false; $('libraryCanvasEditor').focus(); });
   $('libraryCanvasClose')?.addEventListener('click', () => { $('libraryCanvasModal').hidden = true; });
   document.querySelectorAll('[data-highlight]').forEach(button => button.addEventListener('click', () => { document.execCommand('hiliteColor', false, button.dataset.highlight); $('libraryCanvasEditor').focus(); }));
   document.querySelectorAll('[data-ink]').forEach(button => button.addEventListener('click', () => { document.execCommand('foreColor', false, button.dataset.ink); $('libraryCanvasEditor').focus(); }));

@@ -329,7 +329,11 @@ const server = http.createServer(async (request, response) => {
         const [fileRows] = await pool.execute('SELECT file_name,file_type,file_data FROM library_files WHERE material_id=?', [match[1]]);
         const file = (Array.isArray(fileRows) ? fileRows : fileRows?.rows || [])[0];
         if (!file) return json(response, 404, { error: '附件不存在' });
-        response.writeHead(200, { 'Content-Type': file.file_type, 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.file_name)}` });
+        const ext = path.extname(file.file_name).toLowerCase();
+        const previewTypes = { '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8' };
+        const previewType = previewTypes[ext];
+        const disposition = requested.searchParams.get('download') === '1' || !previewType ? 'attachment' : 'inline';
+        response.writeHead(200, { 'Content-Type': previewType || 'application/octet-stream', 'Content-Disposition': `${disposition}; filename*=UTF-8''${encodeURIComponent(file.file_name)}`, 'Content-Length': file.file_data.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' });
         return response.end(Buffer.isBuffer(file.file_data) ? file.file_data : Buffer.from(file.file_data));
       }
       return json(response, 404, { error: '接口不存在' });
