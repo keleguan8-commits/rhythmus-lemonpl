@@ -80,7 +80,7 @@
     noteBlocks = ''; noteAnnotations = [];
     const editor = $('libraryBlockEditor'); if (!editor) return;
     if (!id) { editor.innerHTML = ''; return; }
-    try { const data = await request('/' + id + '/notes'); noteBlocks = data.note?.blocks_json || ''; noteAnnotations = JSON.parse(data.note?.annotations_json || '[]'); editor.innerHTML = noteBlocks || escapeHtml($('libraryBody').value || ''); restoreCanvas(); }
+    try { const data = await request('/' + id + '/notes'); noteBlocks = data.note?.blocks_json || ''; noteAnnotations = JSON.parse(data.note?.annotations_json || '[]'); editor.innerHTML = noteBlocks || escapeHtml($('libraryBody').value || ''); $('libraryCanvasEditor').innerHTML = editor.innerHTML; restoreCanvas(); }
     catch { editor.innerHTML = escapeHtml($('libraryBody').value || ''); }
   }
   function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML.replace(/\n/g, '<br>'); }
@@ -171,9 +171,12 @@
   document.querySelector('.library-editor-toolbar')?.addEventListener('click', event => { const button = event.target.closest('[data-block]'); if (!button) return; document.execCommand('formatBlock', false, button.dataset.block === 'p' ? 'P' : button.dataset.block === 'h2' ? 'H2' : button.dataset.block === 'blockquote' ? 'BLOCKQUOTE' : button.dataset.block === 'pre' ? 'PRE' : button.dataset.block === 'ul' ? 'UL' : 'OL'); $('libraryBlockEditor').focus(); });
   $('libraryInsertTable')?.addEventListener('click', () => { document.execCommand('insertHTML', false, '<table><tbody><tr><td>单元格</td><td>单元格</td></tr><tr><td>单元格</td><td>单元格</td></tr></tbody></table><p><br></p>'); });
   $('libraryInsertTodo')?.addEventListener('click', () => { document.execCommand('insertHTML', false, '<p>☐ 待办事项</p>'); });
-  $('libraryExpandPreview')?.addEventListener('click', () => { if (!selectedId) return; $('libraryCanvasModal').hidden = false; resizeCanvas(); restoreCanvas(); });
+  $('libraryExpandPreview')?.addEventListener('click', () => { if (!selectedId) return; $('libraryCanvasEditor').innerHTML = $('libraryBlockEditor').innerHTML; $('libraryCanvasModal').hidden = false; $('libraryCanvasEditor').focus(); });
   $('libraryCanvasClose')?.addEventListener('click', () => { $('libraryCanvasModal').hidden = true; });
-  document.querySelectorAll('[data-pen]').forEach(button => button.addEventListener('click', () => { penColor = button.dataset.pen; }));
+  document.querySelectorAll('[data-highlight]').forEach(button => button.addEventListener('click', () => { document.execCommand('hiliteColor', false, button.dataset.highlight); $('libraryCanvasEditor').focus(); }));
+  document.querySelectorAll('[data-ink]').forEach(button => button.addEventListener('click', () => { document.execCommand('foreColor', false, button.dataset.ink); $('libraryCanvasEditor').focus(); }));
+  $('libraryLinkInsert')?.addEventListener('click', () => { const url = prompt('输入链接地址（https://…）'); if (!url) return; document.execCommand('createLink', false, url); $('libraryCanvasEditor').focus(); });
+  $('libraryCanvasEditor')?.addEventListener('input', async () => { $('libraryBlockEditor').innerHTML = $('libraryCanvasEditor').innerHTML; $('libraryBody').value = $('libraryCanvasEditor').innerText; try { await saveNotes(); } catch {} });
   const canvas = $('libraryCanvas'), ctx = canvas?.getContext('2d');
   function resizeCanvas() { if (!canvas) return; const box = canvas.getBoundingClientRect(); canvas.width = box.width * devicePixelRatio; canvas.height = box.height * devicePixelRatio; ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0); }
   function point(event) { const box = canvas.getBoundingClientRect(); return { x: event.clientX - box.left, y: event.clientY - box.top }; }
@@ -181,6 +184,5 @@
   canvas?.addEventListener('pointerdown', event => { drawing = true; const p = point(event); noteAnnotations.push({ color: penColor, size: Number($('libraryPenSize').value), points: [p] }); canvas.setPointerCapture(event.pointerId); });
   canvas?.addEventListener('pointermove', event => { if (!drawing) return; const stroke = noteAnnotations.at(-1), p = point(event); stroke.points.push(p); restoreCanvas(); });
   canvas?.addEventListener('pointerup', async () => { if (!drawing) return; drawing = false; try { await saveNotes(); } catch { notice('标记已保留在当前页面，网络恢复后可再次保存。', true); } });
-  $('libraryCanvasClear')?.addEventListener('click', async () => { noteAnnotations = []; restoreCanvas(); try { await saveNotes(); } catch {} });
-  window.addEventListener('resize', () => { if (!$('libraryCanvasModal').hidden) { resizeCanvas(); restoreCanvas(); } });
+  $('libraryCanvasClear')?.addEventListener('click', async () => { $('libraryCanvasEditor').innerHTML = ''; $('libraryBlockEditor').innerHTML = ''; try { await saveNotes(); } catch {} });
 })();
