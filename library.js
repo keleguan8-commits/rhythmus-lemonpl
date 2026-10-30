@@ -144,6 +144,22 @@
   $('libraryCanvasDownload').addEventListener('click', () => { if (selectedId) window.open(`/api/library/${selectedId}/file?download=1`, '_blank'); });
   $('libraryExpandPreview').addEventListener('click', openFileModal);
   $('libraryFileClose').addEventListener('click', () => { $('libraryFileModal').hidden = true; });
+  function addWindowControls(modal, button) {
+    const dialog = modal.querySelector('.library-canvas-dialog');
+    button.title = '最大化或还原窗口；可拖动窗口右下角调整大小';
+    function toggleSize() {
+      const maximize = !modal.classList.contains('is-maximized');
+      if (maximize) { dialog.dataset.width = dialog.style.width; dialog.dataset.height = dialog.style.height; dialog.style.width = ''; dialog.style.height = ''; }
+      else { dialog.style.width = dialog.dataset.width || ''; dialog.style.height = dialog.dataset.height || ''; }
+      modal.classList.toggle('is-maximized', maximize);
+      button.textContent = maximize ? '还原窗口' : '最大化'; button.setAttribute('aria-pressed', String(maximize));
+    }
+    button.setAttribute('aria-pressed', 'false'); button.addEventListener('click', toggleSize);
+    modal.querySelector('.library-canvas-head').addEventListener('dblclick', event => { if (!event.target.closest('button,input,a')) toggleSize(); });
+  }
+  addWindowControls($('libraryFileModal'), $('libraryCanvasMaximize'));
+  const textMaximize = document.createElement('button'); textMaximize.type = 'button'; textMaximize.textContent = '最大化';
+  $('libraryCanvasClose').before(textMaximize); addWindowControls($('libraryCanvasModal'), textMaximize);
   let searchTimer;
   $('librarySearch').addEventListener('input', event => { query = event.target.value.trim(); page = 1; clearTimeout(searchTimer); searchTimer = setTimeout(reload, 250); });
   $('libraryPrev').addEventListener('click', () => { page--; reload(); });
