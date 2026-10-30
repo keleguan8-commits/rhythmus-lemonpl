@@ -163,7 +163,8 @@
     const save = $('libraryForm').querySelector('[type="submit"]'); save.disabled = true;
     try {
       const data = await request(selectedId ? '/' + selectedId : '', { method: selectedId ? 'PUT' : 'POST', body: JSON.stringify(payload) });
-      selectedId = data.item.id; await uploadAttachment(data.item.id); await saveNotes(); show(data.item); await reload(); notice('已保存。');
+      selectedId = data.item.id; await uploadAttachment(data.item.id); await saveNotes();
+      const saved = await request('/' + data.item.id); show(saved.item); await reload(); notice('已保存。');
     } catch (error) { notice(error.message, true); } finally { save.disabled = false; }
   });
   $('libraryDelete').addEventListener('click', async () => {
