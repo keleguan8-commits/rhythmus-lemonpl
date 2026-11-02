@@ -62,6 +62,13 @@ await pool.query(`CREATE TABLE IF NOT EXISTS workbench_data (
   data_json ${postgres ? 'TEXT' : 'MEDIUMTEXT'} NOT NULL,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP${postgres ? '' : ' ON UPDATE CURRENT_TIMESTAMP'}
 )`);
+await pool.query(`CREATE TABLE IF NOT EXISTS workbench_versions (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  user_id CHAR(36) NOT NULL,
+  data_json ${postgres ? 'TEXT' : 'MEDIUMTEXT'} NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES workbench_users(id) ON DELETE CASCADE
+)`);
 await pool.query(`CREATE TABLE IF NOT EXISTS library_materials (
   id CHAR(36) NOT NULL PRIMARY KEY,
   title VARCHAR(160) NOT NULL,
@@ -246,6 +253,7 @@ const server = http.createServer(async (request, response) => {
         ? 'INSERT INTO workbench_data (user_id,data_json,updated_at) VALUES (?,?,CURRENT_TIMESTAMP) ON CONFLICT (user_id) DO UPDATE SET data_json=EXCLUDED.data_json,updated_at=CURRENT_TIMESTAMP'
         : 'INSERT INTO workbench_data (user_id,data_json) VALUES (?,?) ON DUPLICATE KEY UPDATE data_json=VALUES(data_json)';
       await pool.execute(upsert, [user.id, text]);
+      await pool.execute('INSERT INTO workbench_versions (id,user_id,data_json) VALUES (?,?,?)', [randomUUID(), user.id, text]);
       return json(response, 200, { ok: true });
     }
     if (route.startsWith('/api/library')) {

@@ -11,17 +11,32 @@
   let authUser = null;
   let authRegister = false;
   let cloudSyncTimer = 0;
+  let cloudSyncInFlight = false;
+  let cloudSyncQueued = false;
   const api = (path, options = {}) => fetch(API_BASE + path, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
   async function cloudLoad() {
     try { const r = await api('/api/workbench'); if (!r.ok) return null; return (await r.json()).data; } catch { return null; }
   }
   function cloudSave() {
     if (!authUser) return;
-    clearTimeout(cloudSyncTimer);
+    clearTimeout(cloudSyncTimer); cloudSyncQueued = true;
+    const status = $('cloudSyncStatus'); if (status) { status.textContent = '正在上传云端…'; status.classList.remove('is-ok', 'is-error'); }
     cloudSyncTimer = setTimeout(async () => {
-      try { await api('/api/workbench', { method: 'PUT', body: JSON.stringify({ data: { rhythm: rhythm, lemon, state } }) }); } catch {}
-    }, 500);
+      if (cloudSyncInFlight) return;
+      cloudSyncInFlight = true; cloudSyncQueued = false;
+      try {
+        const response = await api('/api/workbench', { method: 'PUT', body: JSON.stringify({ data: { rhythm, lemon, state } }) });
+        if (!response.ok) throw new Error('sync failed');
+        if (status) { status.textContent = `已同步 ${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`; status.classList.add('is-ok'); }
+      } catch {
+        if (status) { status.textContent = '云端同步失败，稍后重试'; status.classList.add('is-error'); }
+        if (!cloudSyncQueued) { cloudSyncQueued = true; cloudSyncTimer = setTimeout(() => cloudSave(), 3000); }
+      } finally { cloudSyncInFlight = false; }
+    }, 300);
   }
+  function flushCloudSave() { if (authUser) { clearTimeout(cloudSyncTimer); cloudSave(); } }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushCloudSave(); });
+  window.addEventListener('pagehide', flushCloudSave);
 
   // ---------- 工具 ----------
   const $ = (id) => document.getElementById(id);

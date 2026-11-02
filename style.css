@@ -45,6 +45,7 @@ body {
 .auth-error { min-height: 20px; color: var(--high); font-size: 12px; margin-top: 10px; }
 .account-box { display: flex; align-items: center; gap: 10px; color: var(--text-soft); font-size: 12px; }
 .account-box button { border: 1px solid var(--border); background: var(--surface); border-radius: 7px; padding: 5px 9px; cursor: pointer; }
+.cloud-sync-status { color: var(--text-faint); font-size: 11px; }.cloud-sync-status.is-ok { color: var(--study); }.cloud-sync-status.is-error { color: var(--high); }
 
 /* ---------- 顶部栏 ---------- */
 .topbar {
